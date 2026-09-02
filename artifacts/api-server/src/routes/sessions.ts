@@ -33,6 +33,7 @@ import {
   RaiseObjectionBody,
   RaiseObjectionResponse,
   ListObjectionGroundsResponse,
+  ListObjectionGroundsQueryParams,
   SendCourtroomTurnParams,
   SendCourtroomTurnBody,
   SendCourtroomTurnResponse,
@@ -57,6 +58,8 @@ import {
   isSessionPhase,
   isStudentSide,
   isValidPhaseTransition,
+  phasesFor,
+  proceedingHasWitnessBox,
   recordEvent,
   speechText,
   transcriptionHint,
@@ -123,6 +126,10 @@ function serializeSessionDetail(
 ) {
   return {
     ...session,
+    // Served rather than left for the client to derive. The web app used to
+    // build its progress strip by listing the SessionPhase enum, which was only
+    // ever correct while every case was a trial.
+    phases: phasesFor(courtCase.proceedingType),
     case: courtCase,
     turns,
     verdict,
@@ -620,6 +627,15 @@ router.post("/sessions/:id/call-witness", async (req, res): Promise<void> => {
 
   const { session, courtCase } = detail;
 
+  if (!proceedingHasWitnessBox(courtCase.proceedingType)) {
+    // Checked before the phase, so the error names the real reason. A writ is
+    // heard on affidavits and the record; there is no stand to take.
+    res.status(400).json({
+      error: "This matter is heard on the record and has no witness box",
+    });
+    return;
+  }
+
   if (
     session.phase !== "witness_examination" &&
     session.phase !== "cross_examination"
@@ -688,7 +704,11 @@ router.post("/sessions/:id/advance-phase", async (req, res): Promise<void> => {
 
   if (
     !isSessionPhase(session.phase) ||
-    !isValidPhaseTransition(session.phase, body.data.phase)
+    !isValidPhaseTransition(
+      courtCase.proceedingType,
+      session.phase,
+      body.data.phase,
+    )
   ) {
     res.status(400).json({ error: "Invalid phase transition" });
     return;
@@ -802,8 +822,20 @@ router.get("/sessions/:id/verdict", async (req, res): Promise<void> => {
   res.json(GetSessionVerdictResponse.parse(verdict));
 });
 
-router.get("/objection-grounds", async (_req, res): Promise<void> => {
-  res.json(ListObjectionGroundsResponse.parse(await listObjectionGrounds()));
+router.get("/objection-grounds", async (req, res): Promise<void> => {
+  const query = ListObjectionGroundsQueryParams.safeParse(req.query);
+  if (!query.success) {
+    res.status(400).json({ error: query.error.message });
+    return;
+  }
+
+  // An empty array is the right answer for a writ, not an error: every ground
+  // the corpus backs is an examination ground and a writ has no witness box.
+  res.json(
+    ListObjectionGroundsResponse.parse(
+      await listObjectionGrounds(query.data.proceedingType),
+    ),
+  );
 });
 
 router.post("/sessions/:id/objection", async (req, res): Promise<void> => {
@@ -816,12 +848,6 @@ router.post("/sessions/:id/objection", async (req, res): Promise<void> => {
   const body = RaiseObjectionBody.safeParse(req.body);
   if (!body.success) {
     res.status(400).json({ error: body.error.message });
-    return;
-  }
-
-  const ground = await findObjectionGround(body.data.groundId);
-  if (!ground) {
-    res.status(400).json({ error: "Unknown objection ground" });
     return;
   }
 
@@ -844,6 +870,19 @@ router.post("/sessions/:id/objection", async (req, res): Promise<void> => {
   }
 
   const phase = session.phase;
+  // Resolved against this session's proceeding rather than the whole catalogue,
+  // so a ground that does not exist here cannot be raised by posting its id
+  // directly. In a writ that rejects all seven — which is the point, since the
+  // UI is not offering any of them either.
+  const ground = await findObjectionGround(
+    body.data.groundId,
+    courtCase.proceedingType,
+  );
+  if (!ground) {
+    res.status(400).json({ error: "Unknown objection ground" });
+    return;
+  }
+
   const statement = body.data.statement?.trim() || "Objection, My Lord!";
 
   // Same context a turn gets: the bench rules on the record, not on the last

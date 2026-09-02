@@ -65,15 +65,17 @@ _PRIMARY_NODES = (WITNESS_TESTIFY, COUNSEL_ARGUES, BENCH_PRESIDES)
 def _route_primary(context: AgentContext) -> str:
     """Who answers when nothing is being objected to.
 
-    Mirrors the phase→persona rule the single-model version used, now expressed
-    as graph routing: the witness under examination answers; in a cross with no
-    witness up, opposing counsel argues; otherwise the bench responds.
+    The witness under examination answers if one is on the stand; otherwise the
+    proceeding decides. That used to be a hardcoded ``cross_examination`` test,
+    which was the trial's rule written as if it were the courtroom's: a writ
+    has counsel answering in ``submissions`` and no cross at all. The phase→
+    speaker map now lives with the proceeding, and a phase nobody claims falls
+    through to the bench.
     """
     if context.active_witness is not None:
         return WITNESS_TESTIFY
-    if context.phase == "cross_examination":
-        return COUNSEL_ARGUES
-    return BENCH_PRESIDES
+    speaker = context.proceeding.primary_speaker.get(context.phase, "bench")
+    return COUNSEL_ARGUES if speaker == "counsel" else BENCH_PRESIDES
 
 
 def _route_entry(state: CourtroomState) -> str:
@@ -239,19 +241,25 @@ def graph_mermaid() -> str:
 
 async def build_context(request: TurnRequest) -> AgentContext:
     memory = await load_session_memory(request.session_id)
-    grounds = await list_objection_grounds()
-    return AgentContext(
+    # Scoped to the proceeding, so opposing counsel is never even shown a
+    # ground the matter cannot engage. In a writ this is empty, and
+    # screen_for_objection returns early on an empty catalogue — the objection
+    # screen does not run and does not bill.
+    grounds = await list_objection_grounds(request.case.proceeding_type)
+    context = AgentContext(
         request=request,
         memory_prompt=format_memory_for_prompt(memory, request.phase),
         grounds=grounds,
-        witness_memory_prompt=(
-            format_memory_for_prompt(
-                memory, request.phase, as_witness=request.active_witness
-            )
-            if request.active_witness
-            else ""
-        ),
     )
+    # Read back off the context rather than off the request: a proceeding with
+    # no witness box has nobody on the stand regardless of what was sent, and
+    # that judgement belongs in one place.
+    witness = context.active_witness
+    if witness is not None:
+        context.witness_memory_prompt = format_memory_for_prompt(
+            memory, request.phase, as_witness=witness.name
+        )
+    return context
 
 
 def _audit_to_dict(
