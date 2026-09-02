@@ -5,41 +5,124 @@ export type SessionPhase =
   | "opening"
   | "witness_examination"
   | "cross_examination"
+  | "submissions"
+  | "bench_questions"
   | "closing"
   | "verdict";
+
+export type ProceedingType = "trial" | "writ";
 
 export type StudentSide = "petitioner" | "respondent";
 
 export type TurnSpeaker = "student" | "judge" | "opposing_counsel" | "witness";
 
-export const PHASE_ORDER: SessionPhase[] = [
-  "opening",
-  "witness_examination",
-  "cross_examination",
-  "closing",
-  "verdict",
-];
+/**
+ * The phases each proceeding runs through, in order.
+ *
+ * This replaced a single `PHASE_ORDER`, which encoded the assumption that
+ * every matter is heard the way a criminal trial is. It is not: an Article 199
+ * writ is decided on affidavits and argument, so `witness_examination` and
+ * `cross_examination` have nothing to run in one, and offering them taught a
+ * procedure that does not exist.
+ *
+ * Express owns this rather than the AI service because advancing a phase is
+ * session bookkeeping, not reasoning. The AI service holds the complementary
+ * half — who speaks *within* a phase — and the two do not overlap, so there is
+ * nothing here for the other side to drift from.
+ */
+export const PROCEEDING_PHASES: Record<ProceedingType, SessionPhase[]> = {
+  trial: [
+    "opening",
+    "witness_examination",
+    "cross_examination",
+    "closing",
+    "verdict",
+  ],
+  // No witness box, so no examination phases. `submissions` is the respondent
+  // answering the petition; `bench_questions` is the court putting its own
+  // questions to counsel, which in a writ is where the matter is actually
+  // decided.
+  writ: ["opening", "submissions", "bench_questions", "closing", "verdict"],
+};
+
+/**
+ * Proceedings whose phases include a witness box.
+ *
+ * Derived rather than declared: a proceeding has witnesses exactly when it has
+ * a phase in which someone could be examined, and stating that twice is how the
+ * two would eventually disagree.
+ */
+export function proceedingHasWitnessBox(proceedingType: string): boolean {
+  return PROCEEDING_PHASES[proceedingTypeOf(proceedingType)].some(
+    (phase) => phase === "witness_examination" || phase === "cross_examination",
+  );
+}
+
+const ALL_PHASES: SessionPhase[] = Object.values(PROCEEDING_PHASES).flat();
 
 export function isSessionPhase(value: string): value is SessionPhase {
-  return PHASE_ORDER.includes(value as SessionPhase);
+  return ALL_PHASES.includes(value as SessionPhase);
+}
+
+export function isProceedingType(value: string): value is ProceedingType {
+  return value === "trial" || value === "writ";
+}
+
+/**
+ * Reads a stored `proceedingType`, falling back to a trial.
+ *
+ * The column is defaulted, not nullable, so this fallback only fires on a value
+ * written by something outside this codebase. Treating that as a trial keeps a
+ * malformed row playable instead of 500ing a student mid-session.
+ */
+export function proceedingTypeOf(value: string): ProceedingType {
+  return isProceedingType(value) ? value : "trial";
+}
+
+export function phasesFor(proceedingType: string): SessionPhase[] {
+  return PROCEEDING_PHASES[proceedingTypeOf(proceedingType)];
 }
 
 export function isStudentSide(value: string): value is StudentSide {
   return value === "petitioner" || value === "respondent";
 }
 
+/**
+ * Whether `next` is the phase that follows `current` in this proceeding.
+ *
+ * Takes the proceeding rather than consulting one global order: `closing`
+ * follows `cross_examination` in a trial and `bench_questions` in a writ, and
+ * both are the only legal move from where they stand.
+ */
 export function isValidPhaseTransition(
+  proceedingType: string,
   current: SessionPhase,
   next: SessionPhase,
 ): boolean {
-  const currentIndex = PHASE_ORDER.indexOf(current);
-  const nextIndex = PHASE_ORDER.indexOf(next);
+  const phases = phasesFor(proceedingType);
+  const currentIndex = phases.indexOf(current);
+  const nextIndex = phases.indexOf(next);
+  // indexOf returns -1 for a phase belonging to some other proceeding, and
+  // -1 + 1 === 0 would make it a legal opening move. Reject explicitly.
+  if (currentIndex === -1 || nextIndex === -1) return false;
   return nextIndex === currentIndex + 1;
 }
 
 export function oppositeSide(side: StudentSide): StudentSide {
   return side === "petitioner" ? "respondent" : "petitioner";
 }
+
+/**
+ * The persona that answers in a given phase when nobody is on the stand.
+ *
+ * One entry per phase across both proceedings. A phase absent from this map
+ * falls through to the bench, which is the safe default: the judge is the one
+ * participant present in every proceeding at every stage.
+ */
+const PHASE_PRIMARY_SPEAKER: Partial<Record<SessionPhase, TurnSpeaker>> = {
+  cross_examination: "opposing_counsel",
+  submissions: "opposing_counsel",
+};
 
 /**
  * Decides which AI persona should reply to the student's next spoken turn,
@@ -56,10 +139,10 @@ export function determineRespondingPersona(
   ) {
     return { persona: "witness", witnessName: activeWitnessName };
   }
-  if (phase === "cross_examination") {
-    return { persona: "opposing_counsel", witnessName: null };
-  }
-  return { persona: "judge", witnessName: null };
+  return {
+    persona: PHASE_PRIMARY_SPEAKER[phase] ?? "judge",
+    witnessName: null,
+  };
 }
 
 /**
@@ -76,6 +159,10 @@ export function courtroomCaseBrief(courtCase: Case) {
   return {
     title: courtCase.title,
     areaOfLaw: courtCase.areaOfLaw,
+    // The agents need this to know whether a witness box exists at all, and
+    // which grounds opposing counsel may object on. Without it a writ would be
+    // screened for hearsay.
+    proceedingType: courtCase.proceedingType,
     summary: courtCase.summary,
     applicableLaws: courtCase.applicableLaws,
     petitionerName: courtCase.petitionerName,

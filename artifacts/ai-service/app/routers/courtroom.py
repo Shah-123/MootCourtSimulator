@@ -4,7 +4,7 @@ import json
 import logging
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -25,6 +25,7 @@ from app.memory import (
     load_session_memory,
     refresh_session_memory,
 )
+from app.proceedings import TRIAL
 from app.rag.retrieval import format_sections_for_prompt
 
 router = APIRouter(tags=["courtroom"])
@@ -102,13 +103,22 @@ async def courtroom_graph() -> Response:
 
 
 @router.get("/objection-grounds")
-async def objection_grounds() -> list[dict]:
-    return [ground.to_dict() for ground in await list_objection_grounds()]
+async def objection_grounds(
+    proceeding_type: str = Query(TRIAL, alias="proceedingType"),
+) -> list[dict]:
+    # An empty list is a correct answer, not a failure: every ground is an
+    # evidentiary examination ground, and a writ has no witness box.
+    return [
+        ground.to_dict() for ground in await list_objection_grounds(proceeding_type)
+    ]
 
 
 @router.get("/objection-grounds/{ground_id}")
-async def objection_ground(ground_id: str) -> dict:
-    ground = await find_objection_ground(ground_id)
+async def objection_ground(
+    ground_id: str,
+    proceeding_type: str = Query(TRIAL, alias="proceedingType"),
+) -> dict:
+    ground = await find_objection_ground(ground_id, proceeding_type)
     if ground is None:
         raise HTTPException(status_code=404, detail="Unknown objection ground")
     return ground.to_dict()

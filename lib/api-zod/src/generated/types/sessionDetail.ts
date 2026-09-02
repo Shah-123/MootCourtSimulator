@@ -17,6 +17,13 @@ export interface SessionDetail {
   caseId: number;
   studentSide: StudentSide;
   phase: SessionPhase;
+  /**
+     * The ordered phase sequence this session runs through, decided by
+     * the case's proceeding type and served so no client has to hold the
+     * mapping. A trial and a writ do not run the same stages; the
+     * progress strip and the advance button are built from this.
+     */
+  phases: SessionPhase[];
   status: SessionStatus;
   createdAt: Date;
   /** @nullable */

@@ -9,33 +9,39 @@
 /**
  * The areas a student may ask the model to draft a new case in.
  *
- * Criminal only, and the constraint is the courtroom, not just the
- * corpus. A drafted case is argued through opening → witness examination
- * → cross-examination → closing, and every objection ground the
- * simulator can raise is an examination ground: hearsay, leading
- * question, secondary evidence, impeachment, s.162 CrPC. A criminal
- * trial is the one proceeding where all of that applies at once.
+ * An area is draftable when two things hold: the corpus holds the
+ * instrument the dispute turns on, and there is a ProceedingType matching
+ * how such a matter is actually heard. Both, not either.
  *
- * Constitutional was offered here briefly and withdrawn. The corpus does
- * hold Arts. 4, 9, 25 and 199, so the citations were sound — but an
- * Article 199 writ is decided on affidavits and the record. It has no
- * witness box, so two of the five phases have nothing to run and
- * opposing counsel has no applicable objection. Grounded in law the
- * simulator cannot actually argue.
+ * Criminal drafts as a `trial`. Every objection ground the simulator can
+ * raise is an examination ground — hearsay, leading question, secondary
+ * evidence, impeachment, s.162 CrPC — and a criminal trial is the
+ * proceeding where all of them apply at once.
  *
- * The other six areas were never backed at all: Contract and Corporate
- * resolved out of the Penal Code (s.415 cheating, s.489-F, s.405
- * criminal breach of trust), and Civil, Family, Property and Tort had no
- * statute filter, sweeping a corpus that is 45/53 criminal and evidence
- * provisions. Generation still worked and still audited at 100%, because
- * the audit's ground truth is that same corpus.
+ * Constitutional drafts as a `writ`. It was offered here once and
+ * withdrawn, and the reason was never the law: the corpus holds Arts. 4,
+ * 9, 25 and 199, so the citations were always sound. The courtroom only
+ * knew how to run a trial, and an Article 199 petition has no witness
+ * box, so two of the five phases had nothing to run and opposing counsel
+ * had no applicable objection. The writ proceeding is what makes it
+ * argueable — a phase model, not new statute.
  *
- * Widen this enum when an area has both its governing instrument
- * ingested and a phase model that fits how it is actually heard.
+ * The other six areas remain unbacked, and there the reason *is* the
+ * corpus: Contract and Corporate resolve out of the Penal Code (s.415
+ * cheating, s.489-F, s.405 criminal breach of trust), and Civil, Family,
+ * Property and Tort have no statute filter at all, sweeping a corpus that
+ * is 45/53 criminal and evidence provisions. Generation still works and
+ * still audits at 100%, because the audit's ground truth is that same
+ * corpus — which is precisely why passing the audit is not evidence of
+ * coverage. Adding a proceeding will not fix those; ingesting the
+ * governing instrument will.
+ *
+ * Widen this enum when an area has both.
  */
 export type DraftableAreaOfLaw = typeof DraftableAreaOfLaw[keyof typeof DraftableAreaOfLaw];
 
 
 export const DraftableAreaOfLaw = {
   Criminal: 'Criminal',
+  Constitutional: 'Constitutional',
 } as const;

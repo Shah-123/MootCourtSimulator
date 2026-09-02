@@ -66,35 +66,41 @@ export const AreaOfLaw = {
 /**
  * The areas a student may ask the model to draft a new case in.
  *
- * Criminal only, and the constraint is the courtroom, not just the
- * corpus. A drafted case is argued through opening → witness examination
- * → cross-examination → closing, and every objection ground the
- * simulator can raise is an examination ground: hearsay, leading
- * question, secondary evidence, impeachment, s.162 CrPC. A criminal
- * trial is the one proceeding where all of that applies at once.
+ * An area is draftable when two things hold: the corpus holds the
+ * instrument the dispute turns on, and there is a ProceedingType matching
+ * how such a matter is actually heard. Both, not either.
  *
- * Constitutional was offered here briefly and withdrawn. The corpus does
- * hold Arts. 4, 9, 25 and 199, so the citations were sound — but an
- * Article 199 writ is decided on affidavits and the record. It has no
- * witness box, so two of the five phases have nothing to run and
- * opposing counsel has no applicable objection. Grounded in law the
- * simulator cannot actually argue.
+ * Criminal drafts as a `trial`. Every objection ground the simulator can
+ * raise is an examination ground — hearsay, leading question, secondary
+ * evidence, impeachment, s.162 CrPC — and a criminal trial is the
+ * proceeding where all of them apply at once.
  *
- * The other six areas were never backed at all: Contract and Corporate
- * resolved out of the Penal Code (s.415 cheating, s.489-F, s.405
- * criminal breach of trust), and Civil, Family, Property and Tort had no
- * statute filter, sweeping a corpus that is 45/53 criminal and evidence
- * provisions. Generation still worked and still audited at 100%, because
- * the audit's ground truth is that same corpus.
+ * Constitutional drafts as a `writ`. It was offered here once and
+ * withdrawn, and the reason was never the law: the corpus holds Arts. 4,
+ * 9, 25 and 199, so the citations were always sound. The courtroom only
+ * knew how to run a trial, and an Article 199 petition has no witness
+ * box, so two of the five phases had nothing to run and opposing counsel
+ * had no applicable objection. The writ proceeding is what makes it
+ * argueable — a phase model, not new statute.
  *
- * Widen this enum when an area has both its governing instrument
- * ingested and a phase model that fits how it is actually heard.
+ * The other six areas remain unbacked, and there the reason *is* the
+ * corpus: Contract and Corporate resolve out of the Penal Code (s.415
+ * cheating, s.489-F, s.405 criminal breach of trust), and Civil, Family,
+ * Property and Tort have no statute filter at all, sweeping a corpus that
+ * is 45/53 criminal and evidence provisions. Generation still works and
+ * still audits at 100%, because the audit's ground truth is that same
+ * corpus — which is precisely why passing the audit is not evidence of
+ * coverage. Adding a proceeding will not fix those; ingesting the
+ * governing instrument will.
+ *
+ * Widen this enum when an area has both.
  */
 export type DraftableAreaOfLaw = typeof DraftableAreaOfLaw[keyof typeof DraftableAreaOfLaw];
 
 
 export const DraftableAreaOfLaw = {
   Criminal: 'Criminal',
+  Constitutional: 'Constitutional',
 } as const;
 
 export type Difficulty = typeof Difficulty[keyof typeof Difficulty];
@@ -114,6 +120,31 @@ export const CaseSource = {
   generated: 'generated',
 } as const;
 
+/**
+ * How the matter is heard. This decides which phases a session runs
+ * through and whether evidentiary objections apply at all, so it belongs
+ * to the case rather than being a label on it.
+ *
+ * `trial` is the adversarial trial the simulator was built around:
+ * opening, examination-in-chief, cross-examination, closing. There is a
+ * witness box, and every objection ground the corpus backs is in play.
+ *
+ * `writ` is a constitutional petition under Article 199, heard on the
+ * record — affidavits and argument, no witness box. It runs opening,
+ * submissions, bench questions, closing, and it offers no objection
+ * grounds at all, because all seven the corpus backs are examination
+ * grounds. That is the proceeding modelled honestly rather than a gap to
+ * fill: a simulator that let counsel cry hearsay during a writ argument
+ * would be teaching a rule that does not exist.
+ */
+export type ProceedingType = typeof ProceedingType[keyof typeof ProceedingType];
+
+
+export const ProceedingType = {
+  trial: 'trial',
+  writ: 'writ',
+} as const;
+
 export type StudentSide = typeof StudentSide[keyof typeof StudentSide];
 
 
@@ -122,6 +153,19 @@ export const StudentSide = {
   respondent: 'respondent',
 } as const;
 
+/**
+ * One stage of a hearing. Which stages apply, and the order they run in,
+ * belong to the proceeding — see ProceedingType — so this enum is the
+ * union of every stage any proceeding uses and its order carries no
+ * meaning. A session's own sequence is served as SessionDetail.phases.
+ * Listing this enum was how the web app used to build its progress strip,
+ * and that stopped being correct the moment a second proceeding existed.
+ *
+ * witness_examination and cross_examination belong to a trial.
+ * submissions and bench_questions belong to a writ heard on the record:
+ * counsel answers the petition, then the bench puts its questions to
+ * counsel. opening, closing and verdict are common to both.
+ */
 export type SessionPhase = typeof SessionPhase[keyof typeof SessionPhase];
 
 
@@ -129,6 +173,8 @@ export const SessionPhase = {
   opening: 'opening',
   witness_examination: 'witness_examination',
   cross_examination: 'cross_examination',
+  submissions: 'submissions',
+  bench_questions: 'bench_questions',
   closing: 'closing',
   verdict: 'verdict',
 } as const;
@@ -333,6 +379,7 @@ export interface Case {
   title: string;
   areaOfLaw: AreaOfLaw;
   difficulty: Difficulty;
+  proceedingType: ProceedingType;
   summary: string;
   applicableLaws: string;
   petitionerName: string;
@@ -399,6 +446,13 @@ export interface SessionDetail {
   caseId: number;
   studentSide: StudentSide;
   phase: SessionPhase;
+  /**
+     * The ordered phase sequence this session runs through, decided by
+     * the case's proceeding type and served so no client has to hold the
+     * mapping. A trial and a writ do not run the same stages; the
+     * progress strip and the advance button are built from this.
+     */
+  phases: SessionPhase[];
   status: SessionStatus;
   createdAt: string;
   /** @nullable */
@@ -491,5 +545,13 @@ export interface ErrorResponse {
 export type ListCasesParams = {
 areaOfLaw?: AreaOfLaw;
 difficulty?: Difficulty;
+};
+
+export type ListObjectionGroundsParams = {
+/**
+ * The proceeding the grounds are being offered in. Defaults to
+ * `trial`, which is every case that predates proceeding types.
+ */
+proceedingType?: ProceedingType;
 };
 

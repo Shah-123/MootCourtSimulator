@@ -83,6 +83,7 @@ router.post("/cases/generate", async (req, res): Promise<void> => {
       title: generated.title,
       areaOfLaw,
       difficulty,
+      proceedingType: generated.proceedingType,
       summary: generated.summary,
       applicableLaws: generated.applicableLaws,
       petitionerName: generated.petitionerName,

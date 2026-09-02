@@ -1,0 +1,74 @@
+{
+  "description": "Routing scenarios for a constitutional writ petition heard on the record. These do not score legal quality — they check that the proceeding-type model actually holds: that no objection is screened where no ground applies, that no witness testifies where there is no witness box, and that the right agent answers in each phase.",
+  "whyStructuralNotJudged": "Every other courtroom metric grades a decision the model made. These grade the graph. A writ engages none of the seven evidentiary grounds in the corpus, so 'counsel did not object' is not a model opinion that could be right or wrong — it is an invariant, and any violation is a routing bug. Structural checks are the only honest way to measure that, and they are cheap: one model call per scenario.",
+  "case": {
+    "title": "Asma Bibi v. Board of Revenue",
+    "areaOfLaw": "Constitutional",
+    "proceedingType": "writ",
+    "summary": "Constitutional petition under Article 199 challenging executive revenue circulars that deny female heirs equal mutation rights in ancestral agricultural land. The petitioner says the circulars require a no-objection certificate from male co-sharers before mutation, which no statute authorises.",
+    "applicableLaws": "Const. 1973 Art. 4 (Right of individuals to be dealt with in accordance with law, etc.), Const. 1973 Art. 25 (Equality of citizens), Const. 1973 Art. 199 (Jurisdiction of High Court)",
+    "studentSide": "petitioner",
+    "petitionerName": "Asma Bibi",
+    "petitionerRole": "Petitioner",
+    "respondentName": "Board of Revenue Punjab",
+    "respondentRole": "Respondent",
+    "witnesses": [
+      {
+        "name": "Salim Tehsildar",
+        "role": "Revenue officer",
+        "statement": "The mutation was deferred pending a no-objection certificate from the male co-sharers, per provincial administrative instructions."
+      }
+    ]
+  },
+  "witnessFixtureNote": "The case file deliberately still carries a witness. A generated writ has none, but a session created before proceeding types existed does, and a stale activeWitness must not seat someone in a proceeding that has no stand. Scenario writ_stale_witness is that adversarial case.",
+  "scenarios": [
+    {
+      "id": "writ_opening_1",
+      "phase": "opening",
+      "activeWitness": null,
+      "utterance": "My Lord, this petition is maintainable under Article 199. The impugned circulars require a no-objection certificate that no statute authorises, and they operate only against female heirs.",
+      "expectedSpeaker": "judge",
+      "rationale": "Opening submissions are made to the bench; the court responds."
+    },
+    {
+      "id": "writ_submissions_1",
+      "phase": "submissions",
+      "activeWitness": null,
+      "utterance": "The respondent has no answer to Article 25. A classification that burdens only female heirs is not a reasonable classification.",
+      "expectedSpeaker": "opposing_counsel",
+      "rationale": "Submissions is where the respondent answers the petition, so opposing counsel replies."
+    },
+    {
+      "id": "writ_bench_questions_1",
+      "phase": "bench_questions",
+      "activeWitness": null,
+      "utterance": "My Lord, the alternate remedy under the revenue hierarchy is not adequate because the circular binds every forum below this Court.",
+      "expectedSpeaker": "judge",
+      "rationale": "The bench puts its own questions to counsel and receives the answer."
+    },
+    {
+      "id": "writ_closing_1",
+      "phase": "closing",
+      "activeWitness": null,
+      "utterance": "For these reasons the circulars are ultra vires Article 4 and discriminatory under Article 25, and the petition should be allowed.",
+      "expectedSpeaker": "judge",
+      "rationale": "Closing is addressed to the bench."
+    },
+    {
+      "id": "writ_leading_question_1",
+      "phase": "submissions",
+      "activeWitness": null,
+      "utterance": "You accept, do you not, that the Board issued this circular knowing full well it would strip women of their inheritance?",
+      "expectedSpeaker": "opposing_counsel",
+      "rationale": "Blatantly leading, and put as if to a witness. In a trial this draws an objection under Arts. 136-138. In a writ there is no witness and no examination, so no ground is engaged and counsel simply answers the point."
+    },
+    {
+      "id": "writ_stale_witness_1",
+      "phase": "submissions",
+      "activeWitness": "Salim Tehsildar",
+      "utterance": "Mr. Tehsildar, you deferred the mutation because the male co-sharers objected, didn't you?",
+      "expectedSpeaker": "opposing_counsel",
+      "rationale": "A stale activeWitness from before proceeding types existed. A writ has no stand, so nobody is seated and nobody testifies, however the request is shaped."
+    }
+  ]
+}

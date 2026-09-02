@@ -53,15 +53,49 @@ The live diagram (kept in sync with the compiled graph) is served at
 ### Edges (the supervisor)
 
 Routing is pure functions over the shared context, not another model call — the
-phase and the presence of a witness fully determine who may act:
+proceeding, the phase and the presence of a witness fully determine who may act:
 
 - **Entry** — a witness on the stand routes to `objection_screen`; otherwise
-  straight to the primary responder (`bench_presides`, or `counsel_argues` in a
-  cross with no witness).
+  straight to the primary responder.
 - **After the objection screen** — an objection routes to `judge_ruling`;
   silence routes to the primary responder.
 - **After a ruling** — *sustained* strikes the question and ends the turn (the
   witness never answers); *overruled* lets the witness answer.
+
+### The proceeding decides, not the phase name
+
+Who the primary responder is used to be a hardcoded test for
+`cross_examination`. That was the trial's rule written as if it were the
+courtroom's, and it is the reason seven of the eight areas of law were
+undraftable: the simulator could only run a matter that has a witness box.
+
+A case now carries a **proceeding type**, and
+[`proceedings.py`](../app/proceedings.py) says what that implies:
+
+| | `trial` | `writ` |
+|---|---|---|
+| Phases | opening → examination-in-chief → cross-examination → closing | opening → submissions → bench questions → closing |
+| Witness box | yes | **no** — heard on affidavits and the record |
+| Primary responder | bench, except counsel in cross | bench, except counsel in submissions |
+| Objection grounds | all seven | **none** |
+
+The split of ownership is deliberate. *Advancing* a phase is session
+bookkeeping, so Express owns the order (`PROCEEDING_PHASES` in
+`lib/courtroom.ts`) and serves each session its own sequence as
+`SessionDetail.phases`. *Who speaks inside* a phase is reasoning, so this
+service owns that. The two halves name the same phases and answer different
+questions about them, so neither can drift by contradicting the other.
+
+Two consequences worth stating plainly:
+
+- **`AgentContext.active_witness` returns `None` in a proceeding with no
+  witness box**, whatever the request says. A session created before proceeding
+  types existed can still carry a stale `activeWitness`, and it must not seat
+  someone on a stand that does not exist. Enforced at the one property every
+  agent reads rather than at each reader.
+- **A writ never runs the objection screen and never bills for it.** Not by a
+  special case in the graph, but because `list_objection_grounds` returns an
+  empty catalogue and `screen_for_objection` already returned early on one.
 
 ## Why the judge is a ReAct agent
 
@@ -104,6 +138,15 @@ exists in the corpus (the catalogue is resolved from the statute book in
 [`grounding.py`](../app/grounding.py)), so **every objection it raises is citable
 by construction**. It is instructed to stay silent unless a ground clearly
 applies — an advocate who objects to everything is noise, not opposition.
+
+The catalogue is filtered twice, and the two filters reject for different
+reasons. A ground whose provision is missing from the corpus is one we *cannot
+cite*, so it is not offered. A ground the proceeding does not engage is one that
+*does not exist here at all* — every one of the seven is an evidentiary
+examination ground, drawn from the Qanun-e-Shahadat and s.162 CrPC, so a writ
+heard on the record returns an empty list. That empty list is the correct
+answer, not a degraded one, and the web app removes the Object control rather
+than offering a button the bench would have to refuse.
 
 ## What the agents know about the case
 

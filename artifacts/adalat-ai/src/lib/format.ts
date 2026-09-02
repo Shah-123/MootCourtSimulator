@@ -46,6 +46,10 @@ const PHASE_LABELS: Record<string, string> = {
   opening: 'Opening submissions',
   witness_examination: 'Examination-in-chief',
   cross_examination: 'Cross-examination',
+  // A writ is heard on the record: counsel answers the petition, then the
+  // bench puts its own questions to counsel.
+  submissions: 'Submissions in reply',
+  bench_questions: 'Questions from the bench',
   closing: 'Closing arguments',
   verdict: 'Judgment',
 };

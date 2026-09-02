@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # app.grounding; the agents reuse that type rather than defining a parallel one,
 # so a ground can never be offered here that grounding would not vouch for.
 from app.grounding import ObjectionGround
+from app.proceedings import TRIAL, ProceedingProfile, profile_for
 
 # ---------------------------------------------------------------------------
 # Request payload (what the Node API sends for one student turn)
@@ -77,6 +78,10 @@ class CaseBrief(BaseModel):
     model_config = _CAMEL
     title: str
     area_of_law: str = Field(alias="areaOfLaw")
+    # Defaulted rather than required: the eval harnesses and the simulate
+    # scripts build this payload by hand and predate proceeding types, and a
+    # trial is what they have always been running.
+    proceeding_type: str = Field(default=TRIAL, alias="proceedingType")
     summary: str
     applicable_laws: str = Field(alias="applicableLaws")
     petitioner_name: str = Field(alias="petitionerName")
@@ -207,7 +212,18 @@ class AgentContext:
         return self.request.utterance
 
     @property
+    def proceeding(self) -> ProceedingProfile:
+        return profile_for(self.request.case.proceeding_type)
+
+    @property
     def active_witness(self) -> WitnessBrief | None:
+        # A proceeding with no witness box has nobody on the stand, whatever
+        # the request says. Enforced here rather than at each reader because
+        # this property is the single place every agent asks the question, and
+        # a stale session carrying a witness name must not seat a witness in a
+        # writ.
+        if not self.proceeding.has_witness_box:
+            return None
         name = self.request.active_witness
         if not name:
             return None
@@ -240,6 +256,11 @@ class AgentContext:
         )
         base = (
             f'Case: "{case.title}" ({case.area_of_law} matter under Pakistani law)\n'
+            # The proceeding, stated outright. The bench and opposing
+            # counsel behave differently in a writ than in a trial, and
+            # telling them which they are in is cheaper and far more
+            # reliable than hoping they infer it from the pleading.
+            f"{self.proceeding.context_line}\n"
             f"Summary: {case.summary}\n"
             f"Applicable laws: {case.applicable_laws}\n"
             f"The student represents the {side.upper()} ({student_party}); "

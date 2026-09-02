@@ -31,6 +31,7 @@ import type {
   ErrorResponse,
   HealthStatus,
   ListCasesParams,
+  ListObjectionGroundsParams,
   LogInInput,
   ObjectionGround,
   ObjectionInput,
@@ -1160,23 +1161,34 @@ export function useGetSessionVerdict<TData = Awaited<ReturnType<typeof getSessio
 
 
 
-export const getListObjectionGroundsUrl = () => {
+export const getListObjectionGroundsUrl = (params?: ListObjectionGroundsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/objection-grounds`
+  return stringifiedParams.length > 0 ? `/api/objection-grounds?${stringifiedParams}` : `/api/objection-grounds`
 }
 
 /**
  * Each ground is bound to a provision in the statute corpus. A ground is
  * only returned if its backing provision exists, so the objection UI
  * cannot offer a ground it is unable to cite.
+ *
+ * Grounds are filtered by proceeding as well. All seven are evidentiary
+ * examination grounds, so a writ heard on the record returns none of
+ * them: an empty list is the correct answer there, not a failure.
  * @summary Evidentiary grounds a student may object on
  */
-export const listObjectionGrounds = async ( options?: Parameters<typeof customFetch>[1]): Promise<ObjectionGround[]> => {
+export const listObjectionGrounds = async (params?: ListObjectionGroundsParams, options?: Parameters<typeof customFetch>[1]): Promise<ObjectionGround[]> => {
 
-  return customFetch<ObjectionGround[]>(getListObjectionGroundsUrl(),
+  return customFetch<ObjectionGround[]>(getListObjectionGroundsUrl(params),
   {
     ...options,
     method: 'GET'
@@ -1189,23 +1201,23 @@ export const listObjectionGrounds = async ( options?: Parameters<typeof customFe
 
 
 
-export const getListObjectionGroundsQueryKey = () => {
+export const getListObjectionGroundsQueryKey = (params?: ListObjectionGroundsParams,) => {
     return [
-    `/api/objection-grounds`
+    `/api/objection-grounds`, ...(params ? [params] : [])
     ] as const;
     }
 
 
-export const getListObjectionGroundsQueryOptions = <TData = Awaited<ReturnType<typeof listObjectionGrounds>>, TError = ErrorType<unknown>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObjectionGrounds>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+export const getListObjectionGroundsQueryOptions = <TData = Awaited<ReturnType<typeof listObjectionGrounds>>, TError = ErrorType<unknown>>(params?: ListObjectionGroundsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObjectionGrounds>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 ) => {
 
 const {query: queryOptions, request: requestOptions} = options ?? {};
 
-  const queryKey =  queryOptions?.queryKey ?? getListObjectionGroundsQueryKey();
+  const queryKey =  queryOptions?.queryKey ?? getListObjectionGroundsQueryKey(params);
 
 
 
-    const queryFn: QueryFunction<Awaited<ReturnType<typeof listObjectionGrounds>>> = ({ signal }) => listObjectionGrounds({ signal, ...requestOptions });
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listObjectionGrounds>>> = ({ signal }) => listObjectionGrounds(params, { signal, ...requestOptions });
 
 
 
@@ -1223,11 +1235,11 @@ export type ListObjectionGroundsQueryError = ErrorType<unknown>
  */
 
 export function useListObjectionGrounds<TData = Awaited<ReturnType<typeof listObjectionGrounds>>, TError = ErrorType<unknown>>(
-  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObjectionGrounds>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+ params?: ListObjectionGroundsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listObjectionGrounds>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
 
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
-  const queryOptions = getListObjectionGroundsQueryOptions(options)
+  const queryOptions = getListObjectionGroundsQueryOptions(params,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

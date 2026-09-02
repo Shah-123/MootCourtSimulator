@@ -440,6 +440,19 @@ paths:
         Each ground is bound to a provision in the statute corpus. A ground is
         only returned if its backing provision exists, so the objection UI
         cannot offer a ground it is unable to cite.
+
+        Grounds are filtered by proceeding as well. All seven are evidentiary
+        examination grounds, so a writ heard on the record returns none of
+        them: an empty list is the correct answer there, not a failure.
+      parameters:
+        - name: proceedingType
+          in: query
+          required: false
+          description: |
+            The proceeding the grounds are being offered in. Defaults to
+            `trial`, which is every case that predates proceeding types.
+          schema:
+            $ref: "#/components/schemas/ProceedingType"
       responses:
         "200":
           description: Available objection grounds
@@ -626,32 +639,38 @@ components:
       description: |
         The areas a student may ask the model to draft a new case in.
 
-        Criminal only, and the constraint is the courtroom, not just the
-        corpus. A drafted case is argued through opening → witness examination
-        → cross-examination → closing, and every objection ground the
-        simulator can raise is an examination ground: hearsay, leading
-        question, secondary evidence, impeachment, s.162 CrPC. A criminal
-        trial is the one proceeding where all of that applies at once.
+        An area is draftable when two things hold: the corpus holds the
+        instrument the dispute turns on, and there is a ProceedingType matching
+        how such a matter is actually heard. Both, not either.
 
-        Constitutional was offered here briefly and withdrawn. The corpus does
-        hold Arts. 4, 9, 25 and 199, so the citations were sound — but an
-        Article 199 writ is decided on affidavits and the record. It has no
-        witness box, so two of the five phases have nothing to run and
-        opposing counsel has no applicable objection. Grounded in law the
-        simulator cannot actually argue.
+        Criminal drafts as a `trial`. Every objection ground the simulator can
+        raise is an examination ground — hearsay, leading question, secondary
+        evidence, impeachment, s.162 CrPC — and a criminal trial is the
+        proceeding where all of them apply at once.
 
-        The other six areas were never backed at all: Contract and Corporate
-        resolved out of the Penal Code (s.415 cheating, s.489-F, s.405
-        criminal breach of trust), and Civil, Family, Property and Tort had no
-        statute filter, sweeping a corpus that is 45/53 criminal and evidence
-        provisions. Generation still worked and still audited at 100%, because
-        the audit's ground truth is that same corpus.
+        Constitutional drafts as a `writ`. It was offered here once and
+        withdrawn, and the reason was never the law: the corpus holds Arts. 4,
+        9, 25 and 199, so the citations were always sound. The courtroom only
+        knew how to run a trial, and an Article 199 petition has no witness
+        box, so two of the five phases had nothing to run and opposing counsel
+        had no applicable objection. The writ proceeding is what makes it
+        argueable — a phase model, not new statute.
 
-        Widen this enum when an area has both its governing instrument
-        ingested and a phase model that fits how it is actually heard.
+        The other six areas remain unbacked, and there the reason *is* the
+        corpus: Contract and Corporate resolve out of the Penal Code (s.415
+        cheating, s.489-F, s.405 criminal breach of trust), and Civil, Family,
+        Property and Tort have no statute filter at all, sweeping a corpus that
+        is 45/53 criminal and evidence provisions. Generation still works and
+        still audits at 100%, because the audit's ground truth is that same
+        corpus — which is precisely why passing the audit is not evidence of
+        coverage. Adding a proceeding will not fix those; ingesting the
+        governing instrument will.
+
+        Widen this enum when an area has both.
       type: string
       enum:
         - Criminal
+        - Constitutional
     Difficulty:
       type: string
       enum:
@@ -663,17 +682,52 @@ components:
       enum:
         - library
         - generated
+    ProceedingType:
+      description: |
+        How the matter is heard. This decides which phases a session runs
+        through and whether evidentiary objections apply at all, so it belongs
+        to the case rather than being a label on it.
+
+        `trial` is the adversarial trial the simulator was built around:
+        opening, examination-in-chief, cross-examination, closing. There is a
+        witness box, and every objection ground the corpus backs is in play.
+
+        `writ` is a constitutional petition under Article 199, heard on the
+        record — affidavits and argument, no witness box. It runs opening,
+        submissions, bench questions, closing, and it offers no objection
+        grounds at all, because all seven the corpus backs are examination
+        grounds. That is the proceeding modelled honestly rather than a gap to
+        fill: a simulator that let counsel cry hearsay during a writ argument
+        would be teaching a rule that does not exist.
+      type: string
+      enum:
+        - trial
+        - writ
     StudentSide:
       type: string
       enum:
         - petitioner
         - respondent
     SessionPhase:
+      description: |
+        One stage of a hearing. Which stages apply, and the order they run in,
+        belong to the proceeding — see ProceedingType — so this enum is the
+        union of every stage any proceeding uses and its order carries no
+        meaning. A session's own sequence is served as SessionDetail.phases.
+        Listing this enum was how the web app used to build its progress strip,
+        and that stopped being correct the moment a second proceeding existed.
+
+        witness_examination and cross_examination belong to a trial.
+        submissions and bench_questions belong to a writ heard on the record:
+        counsel answers the petition, then the bench puts its questions to
+        counsel. opening, closing and verdict are common to both.
       type: string
       enum:
         - opening
         - witness_examination
         - cross_examination
+        - submissions
+        - bench_questions
         - closing
         - verdict
     SessionStatus:
@@ -944,6 +998,8 @@ components:
           $ref: "#/components/schemas/AreaOfLaw"
         difficulty:
           $ref: "#/components/schemas/Difficulty"
+        proceedingType:
+          $ref: "#/components/schemas/ProceedingType"
         summary:
           type: string
         applicableLaws:
@@ -985,6 +1041,7 @@ components:
         - title
         - areaOfLaw
         - difficulty
+        - proceedingType
         - summary
         - applicableLaws
         - petitionerName
@@ -1201,6 +1258,15 @@ components:
           $ref: "#/components/schemas/StudentSide"
         phase:
           $ref: "#/components/schemas/SessionPhase"
+        phases:
+          type: array
+          description: |
+            The ordered phase sequence this session runs through, decided by
+            the case's proceeding type and served so no client has to hold the
+            mapping. A trial and a writ do not run the same stages; the
+            progress strip and the advance button are built from this.
+          items:
+            $ref: "#/components/schemas/SessionPhase"
         status:
           $ref: "#/components/schemas/SessionStatus"
         createdAt:
@@ -1224,6 +1290,7 @@ components:
         - caseId
         - studentSide
         - phase
+        - phases
         - status
         - createdAt
         - completedAt

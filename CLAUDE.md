@@ -286,7 +286,7 @@ The deadline is real and the finished subsystems are already strong. Therefore:
 
 ---
 
-## 6. Current state (as of 2026-08-04)
+## 6. Current state (as of 2026-09-02)
 
 **Done and verified:** statute corpus + hybrid retrieval (BM25 + dense, RRF
 k=60, LLM reranker); grounded case / objection / verdict generation; two-tier
@@ -313,8 +313,60 @@ heard: a witness *answering*. That run was a sustained objection, where the
 graph routes to `END` and silence is the correct behaviour, so the witness's
 voice remains the one link nobody has listened to.
 
+**Done, not yet measured — the proceeding-type model.** A case carries a
+`proceedingType`, and it decides the phases a session runs through, who answers
+inside a phase, and whether evidentiary objections apply at all. `trial` is the
+courtroom as it always was. `writ` is an Article 199 petition heard on the
+record: opening → submissions → bench questions → closing, no witness box, and
+**no objection grounds at all**, because all seven the corpus backs are
+evidentiary examination grounds. A writ therefore never runs the objection
+screen and never bills for it — not by a special case in the graph, but because
+`list_objection_grounds` returns an empty catalogue and `screen_for_objection`
+already returned early on one.
+
+Ownership is split so the halves cannot contradict each other: Express owns
+phase *order* (`PROCEEDING_PHASES` in `lib/courtroom.ts`, served to the client
+as `SessionDetail.phases`) because advancing a phase is session bookkeeping;
+the AI service owns who speaks *within* a phase and which grounds apply
+(`app/proceedings.py`). They name the same phases and answer different
+questions about them. `AgentContext.active_witness` returns `None` wherever the
+proceeding has no witness box, whatever the request says, so a session created
+before this existed cannot seat someone on a stand that is not there.
+
+This is what made **Constitutional** draftable. The corpus already held Arts. 4,
+9, 25 and 199, so the citations were always sound; what was missing was a phase
+model, not statute. The Constitutional retrieval palette was narrowed to
+`CONST_1973` in the same change — QSO evidence articles were harmless while the
+area was unreachable and stop being harmless the moment cases are drafted from
+that palette, since a writ cannot hear a ground resting on rules of oral
+examination. The other six areas remain ungenerable and there the missing thing
+genuinely *is* the corpus; a proceeding will not fix them.
+
+**Verified statically only:** `pnpm run build`, `ruff` (no new errors), and a
+no-model routing test showing trial routing unchanged and a writ reaching
+neither `objection_screen` nor `witness_testify` even with a witness forced onto
+the request. **`pnpm run eval` and `pnpm run eval:courtroom` have not been run
+against it** — no reachable Postgres on the machine that wrote it — and §3
+requires both, because the retrieval palette changed and every agent prompt
+gained a line naming the proceeding. Treat this as implemented and *unmeasured*
+until that gate has actually run; do not quote it as evidence of anything.
+
 **Pending — this is where effort belongs:**
 
+- **Measure the proceeding-type model.** `pnpm run db:push` (adds
+  `cases.proceeding_type`, defaulted `trial`, so every existing case is
+  unaffected), `pnpm run db:seed` (flips *Asma Bibi v. Board of Revenue* to a
+  writ and empties the two witnesses it could never call — it was described as
+  an Article 199 petition from the day it was seeded and was still being run as
+  a trial), then `pnpm run eval` and `pnpm run eval:courtroom`. The latter now
+  ends with six writ scenarios from `eval/datasets/writ_scenarios.json`. They
+  are **structural, not judged**: a writ engages no ground and has no witness
+  box, so "counsel did not object" is an invariant rather than a decision that
+  could be defensibly different, and any non-zero count is a routing bug. Two
+  are adversarial — a blatantly leading question that draws a sustained
+  objection in the trial suite, and a stale `activeWitness` on the request.
+  `docs/evaluation.md` carries that section with **no baseline recorded**, which
+  is deliberate. Fill it from a real run, not from expectation.
 - **Ruff's line-length rule is unenforced, and now visibly so.** Turning CI on
   found 66 findings: one real defect (an f-string with no placeholders, fixed)
   and 65 `E501`s, almost all inside prompt bodies where the line *is* the
@@ -325,6 +377,15 @@ voice remains the one link nobody has listened to.
   can be reflowed and enforce it, or record in §4 that Python line length is
   not enforced and why. Leaving it printed forever is the one option that is
   not a decision.
+- **The ⚠ badge's lookup is narrower than it looks.** `verifiedCitations` in
+  `pages/session.tsx` is built from the seven provisions behind the objection
+  grounds, so the bench citing PPC s.302 already renders ⚠ today even though the
+  corpus has it verified — over-warning, but still wrong, and it devalues the
+  mark §2 exists to protect. Turns already carry per-provision `verified` inside
+  `grounded`; that is the correct source. Found while scoping the ground
+  catalogue by proceeding, which would have made the fault universal in a writ —
+  that path was fixed by keeping the badge's lookup unfiltered, this one
+  predates it and is untouched.
 - **Hear a witness answer.** The objection → ruling half of the sequence is
   confirmed audible (above). Put a *proper* question to a witness — one that
   draws no objection — and confirm the testimony is spoken in its own voice.

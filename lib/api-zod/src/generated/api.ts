@@ -30,6 +30,7 @@ export const ListCasesResponseItem = zod.object({
   "title": zod.string(),
   "areaOfLaw": zod.enum(['Criminal', 'Civil', 'Constitutional', 'Family', 'Contract', 'Property', 'Corporate', 'Tort']).describe('The area a stored case belongs to. Deliberately wider than\nDraftableAreaOfLaw: the seeded library ships a Civil case, so narrowing\nthis to what the corpus can ground would make the case list fail to\nparse its own seed data. This is the read side — what a case may \*be\*,\nnot what a student may ask for.\n'),
   "difficulty": zod.enum(['Beginner', 'Intermediate', 'Advanced']),
+  "proceedingType": zod.enum(['trial', 'writ']).describe('How the matter is heard. This decides which phases a session runs\nthrough and whether evidentiary objections apply at all, so it belongs\nto the case rather than being a label on it.\n\n`trial` is the adversarial trial the simulator was built around:\nopening, examination-in-chief, cross-examination, closing. There is a\nwitness box, and every objection ground the corpus backs is in play.\n\n`writ` is a constitutional petition under Article 199, heard on the\nrecord — affidavits and argument, no witness box. It runs opening,\nsubmissions, bench questions, closing, and it offers no objection\ngrounds at all, because all seven the corpus backs are examination\ngrounds. That is the proceeding modelled honestly rather than a gap to\nfill: a simulator that let counsel cry hearsay during a writ argument\nwould be teaching a rule that does not exist.\n'),
   "summary": zod.string(),
   "applicableLaws": zod.string(),
   "petitionerName": zod.string(),
@@ -84,7 +85,7 @@ export const ListCasesResponse = zod.array(ListCasesResponseItem)
  * @summary Generate a new AI-authored case scenario under Pakistani law
  */
 export const GenerateCaseBody = zod.object({
-  "areaOfLaw": zod.enum(['Criminal']).describe('The areas a student may ask the model to draft a new case in.\n\nCriminal only, and the constraint is the courtroom, not just the\ncorpus. A drafted case is argued through opening → witness examination\n→ cross-examination → closing, and every objection ground the\nsimulator can raise is an examination ground: hearsay, leading\nquestion, secondary evidence, impeachment, s.162 CrPC. A criminal\ntrial is the one proceeding where all of that applies at once.\n\nConstitutional was offered here briefly and withdrawn. The corpus does\nhold Arts. 4, 9, 25 and 199, so the citations were sound — but an\nArticle 199 writ is decided on affidavits and the record. It has no\nwitness box, so two of the five phases have nothing to run and\nopposing counsel has no applicable objection. Grounded in law the\nsimulator cannot actually argue.\n\nThe other six areas were never backed at all: Contract and Corporate\nresolved out of the Penal Code (s.415 cheating, s.489-F, s.405\ncriminal breach of trust), and Civil, Family, Property and Tort had no\nstatute filter, sweeping a corpus that is 45\/53 criminal and evidence\nprovisions. Generation still worked and still audited at 100%, because\nthe audit\'s ground truth is that same corpus.\n\nWiden this enum when an area has both its governing instrument\ningested and a phase model that fits how it is actually heard.\n'),
+  "areaOfLaw": zod.enum(['Criminal', 'Constitutional']).describe('The areas a student may ask the model to draft a new case in.\n\nAn area is draftable when two things hold: the corpus holds the\ninstrument the dispute turns on, and there is a ProceedingType matching\nhow such a matter is actually heard. Both, not either.\n\nCriminal drafts as a `trial`. Every objection ground the simulator can\nraise is an examination ground — hearsay, leading question, secondary\nevidence, impeachment, s.162 CrPC — and a criminal trial is the\nproceeding where all of them apply at once.\n\nConstitutional drafts as a `writ`. It was offered here once and\nwithdrawn, and the reason was never the law: the corpus holds Arts. 4,\n9, 25 and 199, so the citations were always sound. The courtroom only\nknew how to run a trial, and an Article 199 petition has no witness\nbox, so two of the five phases had nothing to run and opposing counsel\nhad no applicable objection. The writ proceeding is what makes it\nargueable — a phase model, not new statute.\n\nThe other six areas remain unbacked, and there the reason \*is\* the\ncorpus: Contract and Corporate resolve out of the Penal Code (s.415\ncheating, s.489-F, s.405 criminal breach of trust), and Civil, Family,\nProperty and Tort have no statute filter at all, sweeping a corpus that\nis 45\/53 criminal and evidence provisions. Generation still works and\nstill audits at 100%, because the audit\'s ground truth is that same\ncorpus — which is precisely why passing the audit is not evidence of\ncoverage. Adding a proceeding will not fix those; ingesting the\ngoverning instrument will.\n\nWiden this enum when an area has both.\n'),
   "difficulty": zod.enum(['Beginner', 'Intermediate', 'Advanced'])
 })
 
@@ -93,6 +94,7 @@ export const GenerateCaseResponse = zod.object({
   "title": zod.string(),
   "areaOfLaw": zod.enum(['Criminal', 'Civil', 'Constitutional', 'Family', 'Contract', 'Property', 'Corporate', 'Tort']).describe('The area a stored case belongs to. Deliberately wider than\nDraftableAreaOfLaw: the seeded library ships a Civil case, so narrowing\nthis to what the corpus can ground would make the case list fail to\nparse its own seed data. This is the read side — what a case may \*be\*,\nnot what a student may ask for.\n'),
   "difficulty": zod.enum(['Beginner', 'Intermediate', 'Advanced']),
+  "proceedingType": zod.enum(['trial', 'writ']).describe('How the matter is heard. This decides which phases a session runs\nthrough and whether evidentiary objections apply at all, so it belongs\nto the case rather than being a label on it.\n\n`trial` is the adversarial trial the simulator was built around:\nopening, examination-in-chief, cross-examination, closing. There is a\nwitness box, and every objection ground the corpus backs is in play.\n\n`writ` is a constitutional petition under Article 199, heard on the\nrecord — affidavits and argument, no witness box. It runs opening,\nsubmissions, bench questions, closing, and it offers no objection\ngrounds at all, because all seven the corpus backs are examination\ngrounds. That is the proceeding modelled honestly rather than a gap to\nfill: a simulator that let counsel cry hearsay during a writ argument\nwould be teaching a rule that does not exist.\n'),
   "summary": zod.string(),
   "applicableLaws": zod.string(),
   "petitionerName": zod.string(),
@@ -154,6 +156,7 @@ export const GetCaseResponse = zod.object({
   "title": zod.string(),
   "areaOfLaw": zod.enum(['Criminal', 'Civil', 'Constitutional', 'Family', 'Contract', 'Property', 'Corporate', 'Tort']).describe('The area a stored case belongs to. Deliberately wider than\nDraftableAreaOfLaw: the seeded library ships a Civil case, so narrowing\nthis to what the corpus can ground would make the case list fail to\nparse its own seed data. This is the read side — what a case may \*be\*,\nnot what a student may ask for.\n'),
   "difficulty": zod.enum(['Beginner', 'Intermediate', 'Advanced']),
+  "proceedingType": zod.enum(['trial', 'writ']).describe('How the matter is heard. This decides which phases a session runs\nthrough and whether evidentiary objections apply at all, so it belongs\nto the case rather than being a label on it.\n\n`trial` is the adversarial trial the simulator was built around:\nopening, examination-in-chief, cross-examination, closing. There is a\nwitness box, and every objection ground the corpus backs is in play.\n\n`writ` is a constitutional petition under Article 199, heard on the\nrecord — affidavits and argument, no witness box. It runs opening,\nsubmissions, bench questions, closing, and it offers no objection\ngrounds at all, because all seven the corpus backs are examination\ngrounds. That is the proceeding modelled honestly rather than a gap to\nfill: a simulator that let counsel cry hearsay during a writ argument\nwould be teaching a rule that does not exist.\n'),
   "summary": zod.string(),
   "applicableLaws": zod.string(),
   "petitionerName": zod.string(),
@@ -212,7 +215,7 @@ export const ListSessionsResponseItem = zod.object({
   "caseTitle": zod.string(),
   "areaOfLaw": zod.enum(['Criminal', 'Civil', 'Constitutional', 'Family', 'Contract', 'Property', 'Corporate', 'Tort']).describe('The area a stored case belongs to. Deliberately wider than\nDraftableAreaOfLaw: the seeded library ships a Civil case, so narrowing\nthis to what the corpus can ground would make the case list fail to\nparse its own seed data. This is the read side — what a case may \*be\*,\nnot what a student may ask for.\n'),
   "studentSide": zod.enum(['petitioner', 'respondent']),
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict']),
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n'),
   "status": zod.enum(['in_progress', 'completed']),
   "createdAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullable(),
@@ -233,7 +236,8 @@ export const CreateSessionResponse = zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
   "studentSide": zod.enum(['petitioner', 'respondent']),
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict']),
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n'),
+  "phases": zod.array(zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n')).describe('The ordered phase sequence this session runs through, decided by\nthe case\'s proceeding type and served so no client has to hold the\nmapping. A trial and a writ do not run the same stages; the\nprogress strip and the advance button are built from this.\n'),
   "status": zod.enum(['in_progress', 'completed']),
   "createdAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullable(),
@@ -242,6 +246,7 @@ export const CreateSessionResponse = zod.object({
   "title": zod.string(),
   "areaOfLaw": zod.enum(['Criminal', 'Civil', 'Constitutional', 'Family', 'Contract', 'Property', 'Corporate', 'Tort']).describe('The area a stored case belongs to. Deliberately wider than\nDraftableAreaOfLaw: the seeded library ships a Civil case, so narrowing\nthis to what the corpus can ground would make the case list fail to\nparse its own seed data. This is the read side — what a case may \*be\*,\nnot what a student may ask for.\n'),
   "difficulty": zod.enum(['Beginner', 'Intermediate', 'Advanced']),
+  "proceedingType": zod.enum(['trial', 'writ']).describe('How the matter is heard. This decides which phases a session runs\nthrough and whether evidentiary objections apply at all, so it belongs\nto the case rather than being a label on it.\n\n`trial` is the adversarial trial the simulator was built around:\nopening, examination-in-chief, cross-examination, closing. There is a\nwitness box, and every objection ground the corpus backs is in play.\n\n`writ` is a constitutional petition under Article 199, heard on the\nrecord — affidavits and argument, no witness box. It runs opening,\nsubmissions, bench questions, closing, and it offers no objection\ngrounds at all, because all seven the corpus backs are examination\ngrounds. That is the proceeding modelled honestly rather than a gap to\nfill: a simulator that let counsel cry hearsay during a writ argument\nwould be teaching a rule that does not exist.\n'),
   "summary": zod.string(),
   "applicableLaws": zod.string(),
   "petitionerName": zod.string(),
@@ -292,7 +297,7 @@ export const CreateSessionResponse = zod.object({
   "turns": zod.array(zod.object({
   "id": zod.int(),
   "sessionId": zod.int(),
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict']),
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n'),
   "speaker": zod.enum(['student', 'judge', 'opposing_counsel', 'witness']),
   "witnessName": zod.string().nullable(),
   "transcript": zod.string(),
@@ -338,7 +343,8 @@ export const GetSessionResponse = zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
   "studentSide": zod.enum(['petitioner', 'respondent']),
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict']),
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n'),
+  "phases": zod.array(zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n')).describe('The ordered phase sequence this session runs through, decided by\nthe case\'s proceeding type and served so no client has to hold the\nmapping. A trial and a writ do not run the same stages; the\nprogress strip and the advance button are built from this.\n'),
   "status": zod.enum(['in_progress', 'completed']),
   "createdAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullable(),
@@ -347,6 +353,7 @@ export const GetSessionResponse = zod.object({
   "title": zod.string(),
   "areaOfLaw": zod.enum(['Criminal', 'Civil', 'Constitutional', 'Family', 'Contract', 'Property', 'Corporate', 'Tort']).describe('The area a stored case belongs to. Deliberately wider than\nDraftableAreaOfLaw: the seeded library ships a Civil case, so narrowing\nthis to what the corpus can ground would make the case list fail to\nparse its own seed data. This is the read side — what a case may \*be\*,\nnot what a student may ask for.\n'),
   "difficulty": zod.enum(['Beginner', 'Intermediate', 'Advanced']),
+  "proceedingType": zod.enum(['trial', 'writ']).describe('How the matter is heard. This decides which phases a session runs\nthrough and whether evidentiary objections apply at all, so it belongs\nto the case rather than being a label on it.\n\n`trial` is the adversarial trial the simulator was built around:\nopening, examination-in-chief, cross-examination, closing. There is a\nwitness box, and every objection ground the corpus backs is in play.\n\n`writ` is a constitutional petition under Article 199, heard on the\nrecord — affidavits and argument, no witness box. It runs opening,\nsubmissions, bench questions, closing, and it offers no objection\ngrounds at all, because all seven the corpus backs are examination\ngrounds. That is the proceeding modelled honestly rather than a gap to\nfill: a simulator that let counsel cry hearsay during a writ argument\nwould be teaching a rule that does not exist.\n'),
   "summary": zod.string(),
   "applicableLaws": zod.string(),
   "petitionerName": zod.string(),
@@ -397,7 +404,7 @@ export const GetSessionResponse = zod.object({
   "turns": zod.array(zod.object({
   "id": zod.int(),
   "sessionId": zod.int(),
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict']),
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n'),
   "speaker": zod.enum(['student', 'judge', 'opposing_counsel', 'witness']),
   "witnessName": zod.string().nullable(),
   "transcript": zod.string(),
@@ -509,7 +516,8 @@ export const CallWitnessResponse = zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
   "studentSide": zod.enum(['petitioner', 'respondent']),
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict']),
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n'),
+  "phases": zod.array(zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n')).describe('The ordered phase sequence this session runs through, decided by\nthe case\'s proceeding type and served so no client has to hold the\nmapping. A trial and a writ do not run the same stages; the\nprogress strip and the advance button are built from this.\n'),
   "status": zod.enum(['in_progress', 'completed']),
   "createdAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullable(),
@@ -518,6 +526,7 @@ export const CallWitnessResponse = zod.object({
   "title": zod.string(),
   "areaOfLaw": zod.enum(['Criminal', 'Civil', 'Constitutional', 'Family', 'Contract', 'Property', 'Corporate', 'Tort']).describe('The area a stored case belongs to. Deliberately wider than\nDraftableAreaOfLaw: the seeded library ships a Civil case, so narrowing\nthis to what the corpus can ground would make the case list fail to\nparse its own seed data. This is the read side — what a case may \*be\*,\nnot what a student may ask for.\n'),
   "difficulty": zod.enum(['Beginner', 'Intermediate', 'Advanced']),
+  "proceedingType": zod.enum(['trial', 'writ']).describe('How the matter is heard. This decides which phases a session runs\nthrough and whether evidentiary objections apply at all, so it belongs\nto the case rather than being a label on it.\n\n`trial` is the adversarial trial the simulator was built around:\nopening, examination-in-chief, cross-examination, closing. There is a\nwitness box, and every objection ground the corpus backs is in play.\n\n`writ` is a constitutional petition under Article 199, heard on the\nrecord — affidavits and argument, no witness box. It runs opening,\nsubmissions, bench questions, closing, and it offers no objection\ngrounds at all, because all seven the corpus backs are examination\ngrounds. That is the proceeding modelled honestly rather than a gap to\nfill: a simulator that let counsel cry hearsay during a writ argument\nwould be teaching a rule that does not exist.\n'),
   "summary": zod.string(),
   "applicableLaws": zod.string(),
   "petitionerName": zod.string(),
@@ -568,7 +577,7 @@ export const CallWitnessResponse = zod.object({
   "turns": zod.array(zod.object({
   "id": zod.int(),
   "sessionId": zod.int(),
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict']),
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n'),
   "speaker": zod.enum(['student', 'judge', 'opposing_counsel', 'witness']),
   "witnessName": zod.string().nullable(),
   "transcript": zod.string(),
@@ -614,14 +623,15 @@ export const AdvanceSessionPhaseParams = zod.object({
 })
 
 export const AdvanceSessionPhaseBody = zod.object({
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict'])
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n')
 })
 
 export const AdvanceSessionPhaseResponse = zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
   "studentSide": zod.enum(['petitioner', 'respondent']),
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict']),
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n'),
+  "phases": zod.array(zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n')).describe('The ordered phase sequence this session runs through, decided by\nthe case\'s proceeding type and served so no client has to hold the\nmapping. A trial and a writ do not run the same stages; the\nprogress strip and the advance button are built from this.\n'),
   "status": zod.enum(['in_progress', 'completed']),
   "createdAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullable(),
@@ -630,6 +640,7 @@ export const AdvanceSessionPhaseResponse = zod.object({
   "title": zod.string(),
   "areaOfLaw": zod.enum(['Criminal', 'Civil', 'Constitutional', 'Family', 'Contract', 'Property', 'Corporate', 'Tort']).describe('The area a stored case belongs to. Deliberately wider than\nDraftableAreaOfLaw: the seeded library ships a Civil case, so narrowing\nthis to what the corpus can ground would make the case list fail to\nparse its own seed data. This is the read side — what a case may \*be\*,\nnot what a student may ask for.\n'),
   "difficulty": zod.enum(['Beginner', 'Intermediate', 'Advanced']),
+  "proceedingType": zod.enum(['trial', 'writ']).describe('How the matter is heard. This decides which phases a session runs\nthrough and whether evidentiary objections apply at all, so it belongs\nto the case rather than being a label on it.\n\n`trial` is the adversarial trial the simulator was built around:\nopening, examination-in-chief, cross-examination, closing. There is a\nwitness box, and every objection ground the corpus backs is in play.\n\n`writ` is a constitutional petition under Article 199, heard on the\nrecord — affidavits and argument, no witness box. It runs opening,\nsubmissions, bench questions, closing, and it offers no objection\ngrounds at all, because all seven the corpus backs are examination\ngrounds. That is the proceeding modelled honestly rather than a gap to\nfill: a simulator that let counsel cry hearsay during a writ argument\nwould be teaching a rule that does not exist.\n'),
   "summary": zod.string(),
   "applicableLaws": zod.string(),
   "petitionerName": zod.string(),
@@ -680,7 +691,7 @@ export const AdvanceSessionPhaseResponse = zod.object({
   "turns": zod.array(zod.object({
   "id": zod.int(),
   "sessionId": zod.int(),
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict']),
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n'),
   "speaker": zod.enum(['student', 'judge', 'opposing_counsel', 'witness']),
   "witnessName": zod.string().nullable(),
   "transcript": zod.string(),
@@ -735,7 +746,8 @@ export const RaiseObjectionResponse = zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
   "studentSide": zod.enum(['petitioner', 'respondent']),
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict']),
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n'),
+  "phases": zod.array(zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n')).describe('The ordered phase sequence this session runs through, decided by\nthe case\'s proceeding type and served so no client has to hold the\nmapping. A trial and a writ do not run the same stages; the\nprogress strip and the advance button are built from this.\n'),
   "status": zod.enum(['in_progress', 'completed']),
   "createdAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullable(),
@@ -744,6 +756,7 @@ export const RaiseObjectionResponse = zod.object({
   "title": zod.string(),
   "areaOfLaw": zod.enum(['Criminal', 'Civil', 'Constitutional', 'Family', 'Contract', 'Property', 'Corporate', 'Tort']).describe('The area a stored case belongs to. Deliberately wider than\nDraftableAreaOfLaw: the seeded library ships a Civil case, so narrowing\nthis to what the corpus can ground would make the case list fail to\nparse its own seed data. This is the read side — what a case may \*be\*,\nnot what a student may ask for.\n'),
   "difficulty": zod.enum(['Beginner', 'Intermediate', 'Advanced']),
+  "proceedingType": zod.enum(['trial', 'writ']).describe('How the matter is heard. This decides which phases a session runs\nthrough and whether evidentiary objections apply at all, so it belongs\nto the case rather than being a label on it.\n\n`trial` is the adversarial trial the simulator was built around:\nopening, examination-in-chief, cross-examination, closing. There is a\nwitness box, and every objection ground the corpus backs is in play.\n\n`writ` is a constitutional petition under Article 199, heard on the\nrecord — affidavits and argument, no witness box. It runs opening,\nsubmissions, bench questions, closing, and it offers no objection\ngrounds at all, because all seven the corpus backs are examination\ngrounds. That is the proceeding modelled honestly rather than a gap to\nfill: a simulator that let counsel cry hearsay during a writ argument\nwould be teaching a rule that does not exist.\n'),
   "summary": zod.string(),
   "applicableLaws": zod.string(),
   "petitionerName": zod.string(),
@@ -794,7 +807,7 @@ export const RaiseObjectionResponse = zod.object({
   "turns": zod.array(zod.object({
   "id": zod.int(),
   "sessionId": zod.int(),
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict']),
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n'),
   "speaker": zod.enum(['student', 'judge', 'opposing_counsel', 'witness']),
   "witnessName": zod.string().nullable(),
   "transcript": zod.string(),
@@ -851,7 +864,8 @@ export const SendCourtroomTurnResponse = zod.object({
   "id": zod.int(),
   "caseId": zod.int(),
   "studentSide": zod.enum(['petitioner', 'respondent']),
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict']),
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n'),
+  "phases": zod.array(zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n')).describe('The ordered phase sequence this session runs through, decided by\nthe case\'s proceeding type and served so no client has to hold the\nmapping. A trial and a writ do not run the same stages; the\nprogress strip and the advance button are built from this.\n'),
   "status": zod.enum(['in_progress', 'completed']),
   "createdAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullable(),
@@ -860,6 +874,7 @@ export const SendCourtroomTurnResponse = zod.object({
   "title": zod.string(),
   "areaOfLaw": zod.enum(['Criminal', 'Civil', 'Constitutional', 'Family', 'Contract', 'Property', 'Corporate', 'Tort']).describe('The area a stored case belongs to. Deliberately wider than\nDraftableAreaOfLaw: the seeded library ships a Civil case, so narrowing\nthis to what the corpus can ground would make the case list fail to\nparse its own seed data. This is the read side — what a case may \*be\*,\nnot what a student may ask for.\n'),
   "difficulty": zod.enum(['Beginner', 'Intermediate', 'Advanced']),
+  "proceedingType": zod.enum(['trial', 'writ']).describe('How the matter is heard. This decides which phases a session runs\nthrough and whether evidentiary objections apply at all, so it belongs\nto the case rather than being a label on it.\n\n`trial` is the adversarial trial the simulator was built around:\nopening, examination-in-chief, cross-examination, closing. There is a\nwitness box, and every objection ground the corpus backs is in play.\n\n`writ` is a constitutional petition under Article 199, heard on the\nrecord — affidavits and argument, no witness box. It runs opening,\nsubmissions, bench questions, closing, and it offers no objection\ngrounds at all, because all seven the corpus backs are examination\ngrounds. That is the proceeding modelled honestly rather than a gap to\nfill: a simulator that let counsel cry hearsay during a writ argument\nwould be teaching a rule that does not exist.\n'),
   "summary": zod.string(),
   "applicableLaws": zod.string(),
   "petitionerName": zod.string(),
@@ -910,7 +925,7 @@ export const SendCourtroomTurnResponse = zod.object({
   "turns": zod.array(zod.object({
   "id": zod.int(),
   "sessionId": zod.int(),
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict']),
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n'),
   "speaker": zod.enum(['student', 'judge', 'opposing_counsel', 'witness']),
   "witnessName": zod.string().nullable(),
   "transcript": zod.string(),
@@ -1019,8 +1034,16 @@ export const GetSessionVerdictResponse = zod.object({
  * Each ground is bound to a provision in the statute corpus. A ground is
  * only returned if its backing provision exists, so the objection UI
  * cannot offer a ground it is unable to cite.
+ *
+ * Grounds are filtered by proceeding as well. All seven are evidentiary
+ * examination grounds, so a writ heard on the record returns none of
+ * them: an empty list is the correct answer there, not a failure.
  * @summary Evidentiary grounds a student may object on
  */
+export const ListObjectionGroundsQueryParams = zod.object({
+  "proceedingType": zod.enum(['trial', 'writ']).optional().describe('The proceeding the grounds are being offered in. Defaults to\n`trial`, which is every case that predates proceeding types.\n')
+})
+
 export const ListObjectionGroundsResponseItem = zod.object({
   "id": zod.string(),
   "label": zod.string(),
@@ -1052,7 +1075,7 @@ export const GetDashboardSummaryResponse = zod.object({
   "caseTitle": zod.string(),
   "areaOfLaw": zod.enum(['Criminal', 'Civil', 'Constitutional', 'Family', 'Contract', 'Property', 'Corporate', 'Tort']).describe('The area a stored case belongs to. Deliberately wider than\nDraftableAreaOfLaw: the seeded library ships a Civil case, so narrowing\nthis to what the corpus can ground would make the case list fail to\nparse its own seed data. This is the read side — what a case may \*be\*,\nnot what a student may ask for.\n'),
   "studentSide": zod.enum(['petitioner', 'respondent']),
-  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'closing', 'verdict']),
+  "phase": zod.enum(['opening', 'witness_examination', 'cross_examination', 'submissions', 'bench_questions', 'closing', 'verdict']).describe('One stage of a hearing. Which stages apply, and the order they run in,\nbelong to the proceeding — see ProceedingType — so this enum is the\nunion of every stage any proceeding uses and its order carries no\nmeaning. A session\'s own sequence is served as SessionDetail.phases.\nListing this enum was how the web app used to build its progress strip,\nand that stopped being correct the moment a second proceeding existed.\n\nwitness_examination and cross_examination belong to a trial.\nsubmissions and bench_questions belong to a writ heard on the record:\ncounsel answers the petition, then the bench puts its questions to\ncounsel. opening, closing and verdict are common to both.\n'),
   "status": zod.enum(['in_progress', 'completed']),
   "createdAt": zod.coerce.date(),
   "completedAt": zod.coerce.date().nullable(),

@@ -34,7 +34,10 @@ import {
   SessionStatus,
   TurnSpeaker,
 } from "@workspace/api-client-react";
-import type { CourtReasoningStep } from "@workspace/api-client-react";
+import type {
+  CourtReasoningStep,
+  ProceedingType,
+} from "@workspace/api-client-react";
 import { ChevronRight, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiErrorState, getErrorMessage } from "@/components/api-state";
@@ -194,6 +197,12 @@ export default function SessionPage({ id }: { id: string }) {
     },
   });
 
+  // Deliberately unfiltered. This list is the lookup behind the verification
+  // badge — whether the *corpus* vouched for a provision — which is a question
+  // about the statute book, not about what may be objected to in this
+  // proceeding. Scoping it to the proceeding put a ⚠ on every citation in a
+  // writ, where the catalogue is empty by design. ObjectionDialog runs its own
+  // scoped query for the grounds a student may actually raise.
   const { data: grounds = [] } = useListObjectionGrounds();
   const verifiedCitations = useMemo(
     () =>
@@ -252,9 +261,11 @@ export default function SessionPage({ id }: { id: string }) {
   }
 
   const handleAdvancePhase = () => {
-    const phases = Object.values(SessionPhase);
-    const currentIndex = phases.indexOf(session.phase);
-    const nextPhase = phases[currentIndex + 1];
+    // The session's own sequence, served by the API. Listing the SessionPhase
+    // enum was only ever right while every case was a trial: a writ runs
+    // submissions and bench questions where a trial examines witnesses.
+    const currentIndex = session.phases.indexOf(session.phase);
+    const nextPhase = session.phases[currentIndex + 1];
 
     if (nextPhase) {
       advancePhase.mutate(
@@ -284,8 +295,14 @@ export default function SessionPage({ id }: { id: string }) {
     });
   };
 
-  const phases = Object.values(SessionPhase);
+  const phases = session.phases;
   const currentIndex = phases.indexOf(session.phase);
+  // A matter heard on the record has no witness box, and the API refuses to
+  // seat one. Hiding the control keeps the UI from offering a procedure this
+  // proceeding does not have.
+  const hasWitnessBox =
+    phases.includes(SessionPhase.witness_examination) ||
+    phases.includes(SessionPhase.cross_examination);
 
   return (
     <div className="flex min-h-[calc(100vh-12rem)] flex-col gap-6 pb-4">
@@ -313,15 +330,20 @@ export default function SessionPage({ id }: { id: string }) {
           </div>
 
           <div className="flex shrink-0 flex-wrap items-center gap-2">
-            <ObjectionDialog sessionId={sessionId} />
+            {/* Hides itself when the proceeding engages no grounds. */}
+            <ObjectionDialog
+              sessionId={sessionId}
+              proceedingType={session.case.proceedingType}
+            />
 
-            {(session.phase === SessionPhase.witness_examination ||
-              session.phase === SessionPhase.cross_examination) && (
-              <CallWitnessDialog
-                sessionId={sessionId}
-                witnesses={session.case.witnesses}
-              />
-            )}
+            {hasWitnessBox &&
+              (session.phase === SessionPhase.witness_examination ||
+                session.phase === SessionPhase.cross_examination) && (
+                <CallWitnessDialog
+                  sessionId={sessionId}
+                  witnesses={session.case.witnesses}
+                />
+              )}
 
             <Button
               onClick={handleAdvancePhase}
@@ -695,7 +717,13 @@ function CallWitnessDialog({
   );
 }
 
-function ObjectionDialog({ sessionId }: { sessionId: number }) {
+function ObjectionDialog({
+  sessionId,
+  proceedingType,
+}: {
+  sessionId: number;
+  proceedingType: ProceedingType;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [groundId, setGroundId] = useState<string>("");
   const [statement, setStatement] = useState<string>("");
@@ -703,10 +731,16 @@ function ObjectionDialog({ sessionId }: { sessionId: number }) {
   const { toast } = useToast();
 
   const { data: grounds = [], isLoading: groundsLoading } =
-    useListObjectionGrounds();
+    useListObjectionGrounds({ proceedingType });
   const selected = grounds.find((g) => g.id === groundId);
 
   const { mutateAsync: raiseObjection, isPending } = useRaiseObjection();
+
+  // Every ground is an evidentiary examination ground, so a matter heard on
+  // the record engages none of them and the control does not belong on the
+  // page at all. Offering it and refusing the objection would teach the
+  // student that the ground exists here and was merely rejected.
+  if (!groundsLoading && grounds.length === 0) return null;
 
   const handleSubmit = async () => {
     if (!groundId) return;
