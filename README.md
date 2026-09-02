@@ -287,8 +287,12 @@ courtroom agents read it — the bench presses the student on grounds they actua
 pleaded. Every ground's citations are audited against the corpus before the case
 is stored, and a ground resting on a provision that does not exist is dropped
 rather than taught. Generation itself moved out of the Express route and behind
-the AI service, so the only prompt left on the Node side is the manually-raised
-objection ruling.
+the AI service, and so has the last one after it: an objection the student
+raises by hand is now ruled on by the **same bench** that rules on the ones
+opposing counsel raises autonomously — reading statute with a tool before it
+rules, and recording the trace. Express holds no prompt and makes no model call
+on any route; the only OpenAI client left on the Node side is the one that
+turns speech into text and back, which is transport, not reasoning.
 
 A case also carries a **proceeding type**, which decides how it is heard. A
 `trial` runs opening → examination-in-chief → cross-examination → closing, with

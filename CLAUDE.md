@@ -38,13 +38,22 @@ dishonest product. If a task seems to require breaking one, stop and say so.
   `src/lib/ai-service.ts` for anything requiring a model.
 - **The browser never talks to the Python service.** Same-origin `/api/*` only.
   OpenAI credentials exist in the API and AI services, never in the web app.
-- *Known exception, do not treat as precedent:* the manually-raised objection
-  ruling (`routes/sessions.ts`) still builds a prompt and calls the model inside
-  Express. Moving that reasoning behind the AI service is pending work (§6), not
-  a pattern to copy. Case generation used to be a second exception and no longer
-  is — `routes/cases.ts` delegates to `POST /cases/generate`. Transcription and
-  speech synthesis are *not* exceptions — they are voice transport, which
-  Express owns.
+- **There is no longer an exception.** Every route reaches a model through
+  `src/lib/ai-service.ts`. The manually-raised objection ruling was the last
+  one: it built a prompt and called the model inside Express, and now delegates
+  to `POST /objections/rule` (`app/routers/courtroom.py` → `app/objections.py`),
+  which routes it into the *same* `rule_on_objection` the graph uses rather
+  than porting the old prompt across. Case generation moved earlier, to
+  `POST /cases/generate`. Transcription and speech synthesis are *not*
+  exceptions — they are voice transport, which Express owns, which is why
+  `lib/voice.ts` still holds an OpenAI client.
+- *One stale copy remains, and it is not a route:*
+  `src/scripts/simulate-turn.ts` still builds a persona prompt and calls the
+  model directly. Its header claims it uses "exactly the prompt the voice
+  endpoint builds", and that stopped being true when voice moved to the graph —
+  it now simulates the single-model courtroom that was replaced. §4 documents
+  it as a behavioural check, so it is measuring something the product no longer
+  does. Use `simulate-courtroom`, which drives the real graph, and see §6.
 
 ### Schema ownership
 
@@ -397,11 +406,17 @@ until that gate has actually run; do not quote it as evidence of anything.
   looking right.
 - **Transcription latency (4.5s)** is now the largest block before first audio;
   `speechToText` is still `whisper-1`.
-- **Reasoning still in Express — one route left.** The manually-raised objection
-  ruling still builds a prompt and calls the model in `routes/sessions.ts`; it
-  belongs behind the AI service (see §1). Case generation has already moved:
-  `routes/cases.ts` now delegates to `POST /cases/generate`
-  (`app/routers/casegen.py` → `app/casegen.py`) and builds no prompt of its own.
+- **`simulate-turn` measures a courtroom that no longer exists.**
+  `src/scripts/simulate-turn.ts` builds its own persona prompt and calls the
+  model directly — the pre-graph, single-completion design. Its header still
+  claims it uses "exactly the prompt the voice endpoint builds", which has been
+  false since the voice turn moved to `POST /courtroom/turn/stream`. §3's rule
+  that the harness must call the same code the app calls applies here too, and
+  this is a copy that drifted. `simulate-courtroom` already drives the real
+  graph, so the honest options are to delete `simulate-turn` and drop it from
+  §4, or rewrite it as a thin wrapper over the graph. Left alone for now
+  because §4 documents it and removing a documented tool is not a call to make
+  in passing.
 - **LLMOps (#7).** Cost and latency are metered per call (`app/telemetry.py`)
   and reported by `eval:courtroom`. Every eval run is now recorded to MLflow
   (`eval/tracking.py` — metrics, the settings and commit that produced them, and

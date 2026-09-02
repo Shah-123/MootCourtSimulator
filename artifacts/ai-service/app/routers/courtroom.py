@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.agents import (
     TurnRequest,
@@ -25,6 +25,7 @@ from app.memory import (
     load_session_memory,
     refresh_session_memory,
 )
+from app.objections import rule_on_raised_objection
 from app.proceedings import TRIAL
 from app.rag.retrieval import format_sections_for_prompt
 
@@ -122,6 +123,33 @@ async def objection_ground(
     if ground is None:
         raise HTTPException(status_code=404, detail="Unknown objection ground")
     return ground.to_dict()
+
+
+class RaisedObjectionRequest(BaseModel):
+    """A student's own objection, plus the turn context the bench needs."""
+
+    model_config = ConfigDict(populate_by_name=True)
+    ground_id: str = Field(alias="groundId")
+    statement: str = ""
+    turn: TurnRequest
+
+
+@router.post("/objections/rule")
+async def objections_rule(request: RaisedObjectionRequest) -> dict:
+    """Rules on an objection the student raised.
+
+    The same bench that rules on the objections opposing counsel raises inside
+    the graph — see `app/objections.py` for why this routes there rather than
+    porting the prompt Express used to hold.
+    """
+    try:
+        return await rule_on_raised_objection(
+            request.turn, request.ground_id, request.statement
+        )
+    except ValueError as err:
+        # The ground does not exist in this proceeding. A client error, not a
+        # failed ruling.
+        raise HTTPException(status_code=400, detail=str(err)) from err
 
 
 @router.post("/sessions/{session_id}/memory/refresh")

@@ -39,18 +39,16 @@ import {
   SendCourtroomTurnResponse,
 } from "@workspace/api-zod";
 import {
-  auditCitations,
   findObjectionGround,
   listObjectionGrounds,
   refreshSessionMemory,
+  ruleOnObjection,
   runCourtroomTurn,
   runInterjection,
   scoreVerdict,
-  searchStatutes,
   streamCourtroomTurn,
   type CourtroomStreamMessage,
 } from "../lib/ai-service";
-import { openai } from "@workspace/integrations-openai-ai-server";
 import {
   ensureCompatibleFormat,
   speechToText,
@@ -877,130 +875,95 @@ router.post("/sessions/:id/objection", async (req, res): Promise<void> => {
     return;
   }
 
+  if (!isStudentSide(session.studentSide)) {
+    res.status(400).json({ error: "Session has an invalid student side" });
+    return;
+  }
+
   const statement = body.data.statement?.trim() || "Objection, My Lord!";
+  const phase = session.phase;
 
-  const recentTurnsText = turns
-    .slice(-5)
-    .map(
-      (t) =>
-        `[${t.speaker}${t.witnessName ? ` (${t.witnessName})` : ""}]: ${t.transcript}`,
-    )
-    .join("\n");
+  // The same working memory and active witness the courtroom turn assembles.
+  // The bench cannot rule on whether a question was leading without knowing who
+  // was on the stand when it was put.
+  const activeWitness =
+    [...turns]
+      .reverse()
+      .find((t) => t.speaker === "witness" && t.phase === phase)?.witnessName ??
+    null;
 
-  // Retrieve neighbouring provisions as well as the one behind the ground:
-  // a leading-question objection is decided by reading Art. 137 together with
-  // 136 and 138, and the judge should see all three before ruling.
-  const related = await searchStatutes(
-    `${ground.label}. ${ground.description} ${statement}`,
-    { topK: 4, statuteCodes: ["QSO_1984", "CRPC_1898"], rerank: false },
-  );
+  const workingMemory = turns
+    .filter((t) => t.phase === phase)
+    .map((t) => ({
+      speaker: t.speaker,
+      witnessName: t.witnessName,
+      transcript: t.transcript,
+    }));
 
-  req.log.info(
-    {
-      sessionId: session.id,
-      groundId: ground.id,
-      retrieved: related.results.length,
-    },
-    "Ruling on objection grounded in retrieved provisions",
-  );
+  // What is being objected to: the last thing said on the record. The student
+  // objects to somebody else's words, not to their own, which is exactly the
+  // distinction the bench is told about on the other side of this call.
+  const objectedTo = turns.at(-1)?.transcript ?? "";
 
-  const prompt = `Case Title: ${courtCase.title}
-Area of Law: ${courtCase.areaOfLaw}
-Current Phase: ${session.phase}
+  // Record the objection before reasoning over it, so it is on the record
+  // regardless of what the bench does next — the same order the courtroom turn
+  // uses. This is the student's own turn, so Express writes it: it is not an
+  // agent event and `CourtEvent.speaker` cannot express one.
+  await db.insert(turnsTable).values({
+    sessionId: session.id,
+    phase,
+    speaker: "student",
+    witnessName: null,
+    transcript: `[OBJECTION: ${ground.label} — ${ground.citation}] ${statement}`,
+  });
 
-Counsel raised an OBJECTION on the ground of: ${ground.label}
-Supporting argument by counsel: "${statement}"
-
-Recent Courtroom Proceedings:
-${recentTurnsText || "(No prior transcript available.)"}
-
-THE PROVISION THIS GROUND RESTS ON:
-${ground.citation} — ${ground.heading}
-${ground.content}
-
-OTHER PROVISIONS RETRIEVED AS RELEVANT:
-${related.promptBlock}
-
-Rule on the objection using only the provisions reproduced above. Cite them by
-their exact citation strings. Do not cite any article or section that does not
-appear above — if the governing provision is not among them, say so plainly
-rather than citing from memory.
-
-Respond with strict JSON only, matching this shape:
-{
-  "ruling": "Sustained" or "Overruled",
-  "explanation": string (2-3 sentences explaining the ruling, citing the provisions relied on),
-  "impact": string (1 sentence of instruction to counsel or the witness)
-}`;
-
-  let parsedRuling: { ruling?: string; explanation?: string; impact?: string };
+  let result;
   try {
-    const completion = await openai.chat.completions.create({
-      model: process.env.MODEL_TEXT || "gpt-4o",
-      max_completion_tokens: 1024,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an authoritative, learned Pakistani High Court Judge presiding over a moot court. You rule only on the statutory text placed before you.",
-        },
-        { role: "user", content: prompt },
-      ],
-    });
-    parsedRuling = JSON.parse(
-      completion.choices[0]?.message?.content ?? "{}",
-    ) as typeof parsedRuling;
+    result = await ruleOnObjection(
+      {
+        sessionId: session.id,
+        phase,
+        studentSide: session.studentSide,
+        activeWitness,
+        case: courtroomCaseBrief(courtCase),
+        utterance: objectedTo,
+        workingMemory,
+      },
+      ground.id,
+      statement,
+    );
   } catch (err) {
-    req.log.error({ err }, "Objection ruling failed");
+    req.log.error({ err, groundId: ground.id }, "Objection ruling failed");
     res.status(500).json({ error: "Failed to rule on objection" });
     return;
   }
 
-  const rulingType =
-    parsedRuling.ruling?.toLowerCase() === "sustained"
-      ? "SUSTAINED"
-      : "OVERRULED";
-  const explanation =
-    parsedRuling.explanation?.trim() ||
-    `The Bench has considered the objection under ${ground.citation}.`;
-  const impact =
-    parsedRuling.impact?.trim() || "Counsel may proceed with the argument.";
+  // Persisted through the same recorder the courtroom turn uses, so a
+  // hand-raised objection and an agent-raised one leave the same shape of
+  // record — including the bench's reasoning trace, which the prompt that used
+  // to live here produced none of.
+  if (result.events.length > 0) {
+    await db.insert(turnsTable).values(
+      result.events.map((event) => ({
+        sessionId: session.id,
+        phase,
+        ...recordEvent(event, result.objection, activeWitness),
+      })),
+    );
+  }
 
-  // The ruling is grounded, but grounding is not a guarantee. Anything the
-  // judge cited that is not in the corpus is flagged rather than passed on to
-  // the student as law.
-  const audit = await auditCitations(`${explanation} ${impact}`);
-  if (audit.hallucinated > 0) {
+  // Grounding is not a guarantee: anything the bench cited that is not in the
+  // corpus is logged rather than passed to the student as settled law.
+  if (result.citationAudit.agentFabricated?.length) {
     req.log.warn(
       {
         sessionId: session.id,
         groundId: ground.id,
-        fabricated: audit.checks
-          .filter((check) => check.status === "not_found")
-          .map((check) => check.raw),
+        fabricated: result.citationAudit.agentFabricated,
       },
-      "Judge cited provisions absent from the corpus while ruling on an objection",
+      "Bench cited provisions absent from the corpus while ruling on an objection",
     );
   }
-
-  await db.transaction(async (tx) => {
-    await tx.insert(turnsTable).values({
-      sessionId: session.id,
-      phase: session.phase,
-      speaker: "student",
-      witnessName: null,
-      transcript: `[OBJECTION: ${ground.label} — ${ground.citation}] ${statement}`,
-    });
-
-    await tx.insert(turnsTable).values({
-      sessionId: session.id,
-      phase: session.phase,
-      speaker: "judge",
-      witnessName: null,
-      transcript: `[RULING: ${rulingType}] ${explanation} ${impact}`,
-    });
-  });
 
   const updated = await loadSessionDetail(session.id, currentUserId(req));
   if (!updated || !updated.courtCase) {
