@@ -220,6 +220,11 @@ are still where the detail lives. `docs/poster.html` is the single graded slide.
 
 Run what applies; do not claim a gate you skipped.
 
+`.github/workflows/checks.yml` runs the first two on every push, plus `ruff`
+and a check that the generated API types still match `openapi.yaml`. It runs
+**no eval**. The model-facing gates below are therefore yours alone, and a
+green tick in CI is not evidence for any of them.
+
 ```bash
 pnpm run typecheck                    # all libs, apps, scripts
 pnpm run build                        # typecheck + production bundles
@@ -310,6 +315,16 @@ voice remains the one link nobody has listened to.
 
 **Pending — this is where effort belongs:**
 
+- **Ruff's line-length rule is unenforced, and now visibly so.** Turning CI on
+  found 66 findings: one real defect (an f-string with no placeholders, fixed)
+  and 65 `E501`s, almost all inside prompt bodies where the line *is* the
+  prompt, so reflowing it changes what ships to the model. CI blocks on
+  everything except `E501` and prints the `E501` count on every run rather than
+  silencing it in `pyproject.toml`, where it would stop being visible. §4 still
+  states line-length 88, so the two disagree: either reflow the prompts that
+  can be reflowed and enforce it, or record in §4 that Python line length is
+  not enforced and why. Leaving it printed forever is the one option that is
+  not a decision.
 - **Hear a witness answer.** The objection → ruling half of the sequence is
   confirmed audible (above). Put a *proper* question to a witness — one that
   draws no objection — and confirm the testimony is spoken in its own voice.
@@ -341,8 +356,16 @@ voice remains the one link nobody has listened to.
   and offset from the dev-server ports on purpose — `API_PORT` is the Vite dev
   proxy target, so reusing it collided with `pnpm run dev:api`. The cross-encoder
   reranker moved to an opt-in `crossencoder` extra, which is what keeps the AI
-  image at 748 MB rather than ~3 GB. Still missing: per-call tracing, CI, and
-  surfacing cost per *session* in the app rather than only in the harness.
+  image at 748 MB rather than ~3 GB. **CI has landed**
+  (`.github/workflows/checks.yml`): every push runs the contract-drift check,
+  `typecheck`, `build` and `ruff`. It runs **no eval**, deliberately — each
+  needs a key and a database and bills per run, and §3 asks for a *delta
+  against a recorded baseline*, which is a judgement CI cannot make, so a green
+  tick there says nothing about retrieval, agents or scoring. The drift check
+  is the part worth knowing about: it regenerates from `openapi.yaml` and fails
+  on a dirty tree, which is what turns "never hand-edit the generated files"
+  from a request into an enforced invariant. Still missing: per-call tracing,
+  and surfacing cost per *session* in the app rather than only in the harness.
 - **Security & contract fixes (#8).** User scoping is **done**: `users` (scrypt
   password hashing), a stateless signed session cookie, and rate limiting keyed
   on both email and IP (`lib/auth.ts`, `lib/rate-limit.ts`). `requireUser` is

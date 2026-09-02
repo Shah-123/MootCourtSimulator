@@ -98,7 +98,7 @@ def print_report(results: list[CaseResult], label: str) -> None:
         )
 
     overall = summarise(results)
-    print(f"\n  overall:  " + "  ".join(f"{k}={v:.2f}" for k, v in overall.items()))
+    print("\n  overall:  " + "  ".join(f"{k}={v:.2f}" for k, v in overall.items()))
     for mode, group in sorted(_by_mode(results).items()):
         s = summarise(group)
         print(
