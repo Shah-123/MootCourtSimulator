@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",
-    "simulate-turn": "tsx src/scripts/simulate-turn.ts",
     "simulate-courtroom": "tsx src/scripts/simulate-courtroom.ts",
     "build": "node ./build.mjs",
     "start": "node --enable-source-maps ./dist/index.mjs",

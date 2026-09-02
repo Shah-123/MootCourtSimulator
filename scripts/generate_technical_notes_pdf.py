@@ -3566,7 +3566,6 @@ def part_appendix():
         "# behavioural checks (read-only)\n"
         "pnpm run simulate-courtroom <sessionId> --phase witness_examination \\n"
         "     --witness \"Sana Arif\" \"<utterance>\"\n"
-        "pnpm run simulate-turn <sessionId> \"<utterance>\"\n"
         "\n"
         "# regenerate the OpenAPI client and validators\n"
         "pnpm --filter @workspace/api-spec run codegen"))

@@ -157,7 +157,6 @@ pnpm run dev         # web app on :5173
 | `pnpm --filter @workspace/db run push` | Apply the Drizzle schema to the database. |
 | `pnpm run statutes:ingest` / `statutes:reindex` | Ingest / force re-embed the statute corpus. |
 | `pnpm run simulate-courtroom <sessionId> "<utterance>"` | Drive one turn through the multi-agent graph and print the agent trace (read-only). |
-| `pnpm run simulate-turn <sessionId> "<utterance>"` | Single-persona text turn (evaluation baseline). |
 | `pnpm run eval` | Run the evaluation suite (retrieval recall@k/MRR + judge reliability/discrimination). |
 
 Try the multi-agent system (both `dev:ai` and a seeded session required):

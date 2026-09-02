@@ -112,38 +112,11 @@ export function oppositeSide(side: StudentSide): StudentSide {
   return side === "petitioner" ? "respondent" : "petitioner";
 }
 
-/**
- * The persona that answers in a given phase when nobody is on the stand.
- *
- * One entry per phase across both proceedings. A phase absent from this map
- * falls through to the bench, which is the safe default: the judge is the one
- * participant present in every proceeding at every stage.
- */
-const PHASE_PRIMARY_SPEAKER: Partial<Record<SessionPhase, TurnSpeaker>> = {
-  cross_examination: "opposing_counsel",
-  submissions: "opposing_counsel",
-};
-
-/**
- * Decides which AI persona should reply to the student's next spoken turn,
- * based on the current courtroom phase and (if applicable) the most
- * recently called witness.
- */
-export function determineRespondingPersona(
-  phase: SessionPhase,
-  activeWitnessName: string | null,
-): { persona: TurnSpeaker; witnessName: string | null } {
-  if (
-    (phase === "witness_examination" || phase === "cross_examination") &&
-    activeWitnessName
-  ) {
-    return { persona: "witness", witnessName: activeWitnessName };
-  }
-  return {
-    persona: PHASE_PRIMARY_SPEAKER[phase] ?? "judge",
-    witnessName: null,
-  };
-}
+// `determineRespondingPersona` lived here: a phase→persona rule that decided
+// who answers the student. It went with `simulate-turn`, its only caller. It was
+// a second copy of the graph's `_route_primary`, and a copy of a routing rule is
+// exactly the thing that agrees with the original right up until someone edits
+// one of them. The AI service decides who speaks; Express persists what it said.
 
 /**
  * The slice of the case record the courtroom agents receive.

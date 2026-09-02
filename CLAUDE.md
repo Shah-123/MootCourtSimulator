@@ -47,13 +47,11 @@ dishonest product. If a task seems to require breaking one, stop and say so.
   `POST /cases/generate`. Transcription and speech synthesis are *not*
   exceptions — they are voice transport, which Express owns, which is why
   `lib/voice.ts` still holds an OpenAI client.
-- *One stale copy remains, and it is not a route:*
-  `src/scripts/simulate-turn.ts` still builds a persona prompt and calls the
-  model directly. Its header claims it uses "exactly the prompt the voice
-  endpoint builds", and that stopped being true when voice moved to the graph —
-  it now simulates the single-model courtroom that was replaced. §4 documents
-  it as a behavioural check, so it is measuring something the product no longer
-  does. Use `simulate-courtroom`, which drives the real graph, and see §6.
+- *This is now true of the scripts too.* `simulate-turn` was the last holdout —
+  a persona prompt and a direct model call, simulating the single-completion
+  courtroom the graph replaced — and it was deleted rather than repaired,
+  because `simulate-courtroom` already drives the real graph. Nothing under
+  `artifacts/api-server` builds a prompt any more.
 
 ### Schema ownership
 
@@ -260,10 +258,6 @@ Behavioural checks (read-only, safe):
 pnpm run simulate-courtroom <sessionId> --phase witness_examination --witness "Sana Arif" "<utterance>"
 ```
 
-```bash
-pnpm run simulate-turn <sessionId> "<utterance>"
-```
-
 **Honest limits:** there is no audio device in the agent environment, so **voice
 paths cannot be verified here** — implement them, then say plainly that a mic
 test is left to the user. There is no `tests/` directory yet although pytest is
@@ -406,17 +400,6 @@ until that gate has actually run; do not quote it as evidence of anything.
   looking right.
 - **Transcription latency (4.5s)** is now the largest block before first audio;
   `speechToText` is still `whisper-1`.
-- **`simulate-turn` measures a courtroom that no longer exists.**
-  `src/scripts/simulate-turn.ts` builds its own persona prompt and calls the
-  model directly — the pre-graph, single-completion design. Its header still
-  claims it uses "exactly the prompt the voice endpoint builds", which has been
-  false since the voice turn moved to `POST /courtroom/turn/stream`. §3's rule
-  that the harness must call the same code the app calls applies here too, and
-  this is a copy that drifted. `simulate-courtroom` already drives the real
-  graph, so the honest options are to delete `simulate-turn` and drop it from
-  §4, or rewrite it as a thin wrapper over the graph. Left alone for now
-  because §4 documents it and removing a documented tool is not a call to make
-  in passing.
 - **LLMOps (#7).** Cost and latency are metered per call (`app/telemetry.py`)
   and reported by `eval:courtroom`. Every eval run is now recorded to MLflow
   (`eval/tracking.py` — metrics, the settings and commit that produced them, and
