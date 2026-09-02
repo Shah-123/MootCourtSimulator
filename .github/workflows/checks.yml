@@ -1,0 +1,108 @@
+name: checks
+
+# The fast gate, and only the fast gate.
+#
+# `pnpm run eval`, `eval:courtroom`, `eval:witness` and `eval:redteam` are
+# deliberately absent. Each needs an OPENAI_API_KEY and a PostgreSQL corpus, and
+# each spends real money every run — wiring them here would bill the project on
+# every push and still would not be what CLAUDE.md §3 asks for, which is a
+# *reported delta against a recorded baseline* by the person who made the
+# change. That is a judgement, and CI cannot make it, so it does not pretend to.
+#
+# Read a green tick here as: the tree installs, matches its own contract,
+# typechecks, builds, and lints. It says nothing whatever about retrieval
+# quality, agent behaviour or verdict scoring.
+
+on:
+  # Every branch, and push only. A pull request's head branch is itself pushed,
+  # so PRs are covered by the commit status without adding a `pull_request`
+  # trigger that would run the whole suite a second time for the same commit.
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+# A second push to the same branch makes the first run's answer worthless before
+# it finishes.
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  node:
+    name: contract, typecheck, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Pinned rather than floating: `scripts/preinstall.mjs` refuses any package
+      # manager that is not pnpm, so a silent major bump here fails the install
+      # rather than degrading quietly.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.20.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # `lib/api-spec/openapi.yaml` is the source of truth for transport types,
+      # and nothing under `lib/api-*/src/generated/**` may be hand-edited (§1).
+      # Regenerating and diffing is the only thing that *enforces* that rather
+      # than asking for it: a hand-edit, or a YAML change committed without
+      # running codegen, both surface here as a dirty tree. The codegen script
+      # ends in `typecheck:libs`, so the libraries are typechecked by this step.
+      - name: Contract has not drifted from the spec
+        run: |
+          pnpm --filter @workspace/api-spec run codegen
+          if ! git diff --quiet; then
+            echo "::error::Generated API types do not match openapi.yaml. Run: pnpm --filter @workspace/api-spec run codegen"
+            git diff --stat
+            exit 1
+          fi
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Build
+        run: pnpm run build
+
+  python:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ruff alone, not the `dev` extra. Linting resolves no imports, and
+      # installing langgraph and the OpenAI client to run a linter would put
+      # about a minute on every push for nothing.
+      - name: Install ruff
+        run: pip install "ruff>=0.6"
+
+      # Config — line-length 88, target py312, select E,F,I,UP,B — is read from
+      # `artifacts/ai-service/pyproject.toml`, so this is the same check as the
+      # documented local gate.
+      #
+      # E501 is excluded from the *blocking* set and reported below instead.
+      # There are 65 of them and they are almost all inside prompt bodies: in an
+      # `f"""..."""` prompt the line and the prompt text are the same thing, so
+      # reflowing to satisfy a linter changes what ships to the model. The debt
+      # is real and unresolved — CLAUDE.md §4 still states line-length 88 — so it
+      # is printed on every run rather than silenced in `pyproject.toml`, where
+      # it would stop being visible.
+      - name: Lint
+        run: ruff check --ignore E501 artifacts/ai-service
+
+      - name: Line-length debt (not blocking)
+        if: always()
+        run: ruff check --select E501 --statistics artifacts/ai-service || true
