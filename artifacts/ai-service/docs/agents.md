@@ -129,6 +129,31 @@ $0.0153 → $0.0168 (+10%), silent turns unchanged at $0.0020, and objection
 precision/recall/F1/specificity all still 1.00 with ruling accuracy 100%. See
 [`docs/evaluation.md`](evaluation.md).
 
+### One bench, whoever objects
+
+The student can also raise an objection by hand, from the web app. That used to
+be ruled on by a *second* judge: `routes/sessions.ts` built its own prompt, was
+handed a block of retrieved provisions, and answered in one shot with no trace.
+Two benches, ruling on the same kind of objection by different methods, with
+nothing forcing them to agree — the drift that defining `run_turn` in terms of
+`run_turn_stream` exists to prevent, in a place nobody had looked.
+
+`POST /objections/rule` ([`objections.py`](../app/objections.py)) routes it into
+the same `rule_on_objection`, so a hand-raised objection now gets what the
+autonomous one always had: statute read with `search_statute` before the ruling,
+and a recorded trace showing it.
+
+The bench is told **who** objected. That is not a courtesy: whether a question
+is leading turns on whose witness is on the stand, so a bench told the wrong
+party raised the objection can rule the wrong way on identical words. The
+`ObjectorVoice` in [`judge.py`](../app/agents/judge.py) carries the difference,
+including the fact that a student objects to somebody else's words already on
+the record, where opposing counsel objects to the question the student just put.
+
+Only the ruling comes back over the wire. The student's own objection is the
+student's turn — `CourtEvent.speaker` cannot express "student" — so Express
+records that itself, exactly as it records the utterance in a courtroom turn.
+
 ## Why opposing counsel is the autonomous actor
 
 Its defining behaviour is the objection nobody asked for. After each question

@@ -38,14 +38,15 @@ dishonest product. If a task seems to require breaking one, stop and say so.
   `src/lib/ai-service.ts` for anything requiring a model.
 - **The browser never talks to the Python service.** Same-origin `/api/*` only.
   OpenAI credentials exist in the API and AI services, never in the web app.
-- **There is no exception left.** Express builds no prompt and makes no model
-  call of its own. The last two moved out: case generation to
-  `POST /cases/generate`, and the manually-raised objection ruling to
-  `POST /courtroom/objection` (2026-09-04) — `routes/sessions.ts` now hands the
-  ground and the record to the same ReAct bench that rules on an agent's
-  objection, and persists the trace it returns. Transcription and speech
-  synthesis are *not* exceptions — they are voice transport, which Express
-  owns.
+- **There is no longer an exception.** Every route reaches a model through
+  `src/lib/ai-service.ts`. The manually-raised objection ruling was the last
+  one: it built a prompt and called the model inside Express, and now delegates
+  to `POST /objections/rule` (`app/routers/courtroom.py` → `app/objections.py`),
+  which routes it into the *same* `rule_on_objection` the graph uses rather
+  than porting the old prompt across. Case generation moved earlier, to
+  `POST /cases/generate`. Transcription and speech synthesis are *not*
+  exceptions — they are voice transport, which Express owns, which is why
+  `lib/voice.ts` still holds an OpenAI client.
 
 ### Schema ownership
 
@@ -410,15 +411,18 @@ until that gate has actually run; do not quote it as evidence of anything.
   looking right.
 - **Transcription latency (4.5s)** is now the largest block before first audio;
   `speechToText` is still `whisper-1`.
-- **Reasoning in Express — done, no route left (2026-09-04).** The
-  manually-raised objection ruling moved to `POST /courtroom/objection`
-  (`app/routers/courtroom.py` → `run_stated_objection` in
-  `app/agents/interjection.py`), which reuses `rule_on_objection` — so a student
-  objection now draws the same three-round ReAct bench as an agent's, and the
-  trace is persisted on the turn instead of discarded. Case generation moved
-  earlier to `POST /cases/generate`. **Not yet done for this route: the ruling
-  is still not spoken.** It returns as JSON to a dialog, where every graph
-  ruling is streamed and synthesized.
+- **Reasoning in Express — done, no route left.** The manually-raised objection
+  ruling moved to `POST /objections/rule` (`app/objections.py`), which routes it
+  into the same `rule_on_objection` the graph uses rather than porting the old
+  prompt across. The bench is told *who* objected (`ObjectorVoice` in
+  `app/agents/judge.py`) and is shown the words objected to rather than the
+  objection itself — both load-bearing, because whether a question is leading
+  turns on whose witness is on the stand. Case generation moved earlier to
+  `POST /cases/generate`. **Not done for this route: the ruling is not spoken.**
+  It returns as JSON to a dialog, where every graph ruling is streamed and
+  synthesized. **No eval covers it either** — `courtroom_eval` and `redteam_eval`
+  both drive `run_turn`, the autonomous path — so a hand-raised objection is a
+  manual check against a live stack.
 - **LLMOps (#7).** Cost and latency are metered per call (`app/telemetry.py`)
   and reported by `eval:courtroom`. Every eval run is now recorded to MLflow
   (`eval/tracking.py` — metrics, the settings and commit that produced them, and

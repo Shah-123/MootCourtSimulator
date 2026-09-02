@@ -395,6 +395,26 @@ function proceedingQuery(proceedingType?: string): string {
     : "";
 }
 
+/**
+ * Rules on an objection the student raised by hand.
+ *
+ * Returns the same envelope as a courtroom turn — a ruling event, the
+ * objection, and the citation audit — so the route persists it through the
+ * code path it already uses for an agent-raised objection. The student's own
+ * words are not in `events`: they are the student's turn, and Express records
+ * those itself.
+ */
+export async function ruleOnObjection(
+  turn: CourtroomTurnRequest,
+  groundId: string,
+  statement: string,
+): Promise<CourtroomTurnResult> {
+  return request("/objections/rule", {
+    method: "POST",
+    body: JSON.stringify({ groundId, statement, turn }),
+  });
+}
+
 export async function listObjectionGrounds(
   proceedingType?: string,
 ): Promise<ObjectionGround[]> {

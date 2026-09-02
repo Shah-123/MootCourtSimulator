@@ -42,7 +42,7 @@ import {
   findObjectionGround,
   listObjectionGrounds,
   refreshSessionMemory,
-  ruleObjection,
+  ruleOnObjection,
   runCourtroomTurn,
   runInterjection,
   scoreVerdict,
@@ -883,12 +883,17 @@ router.post("/sessions/:id/objection", async (req, res): Promise<void> => {
     return;
   }
 
-  const statement = body.data.statement?.trim() || "Objection, My Lord!";
+  if (!isStudentSide(session.studentSide)) {
+    res.status(400).json({ error: "Session has an invalid student side" });
+    return;
+  }
 
-  // Same context a turn gets: the bench rules on the record, not on the last
-  // five lines. The neighbouring provisions this ruling turns on are no longer
-  // retrieved here either — the judge's ReAct loop reads them itself with
-  // `search_statute`, which is why the trace can now be shown with the ruling.
+  const statement = body.data.statement?.trim() || "Objection, My Lord!";
+  const phase = session.phase;
+
+  // The same working memory and active witness the courtroom turn assembles.
+  // The bench cannot rule on whether a question was leading without knowing who
+  // was on the stand when it was put.
   const activeWitness =
     [...turns]
       .reverse()
@@ -903,22 +908,58 @@ router.post("/sessions/:id/objection", async (req, res): Promise<void> => {
       transcript: t.transcript,
     }));
 
+  // What is being objected to: the last thing said on the record. The student
+  // objects to somebody else's words, not to their own, which is exactly the
+  // distinction the bench is told about on the other side of this call.
+  const objectedTo = turns.at(-1)?.transcript ?? "";
+
+  // Record the objection before reasoning over it, so it is on the record
+  // regardless of what the bench does next — the same order the courtroom turn
+  // uses. This is the student's own turn, so Express writes it: it is not an
+  // agent event and `CourtEvent.speaker` cannot express one.
+  await db.insert(turnsTable).values({
+    sessionId: session.id,
+    phase,
+    speaker: "student",
+    witnessName: null,
+    transcript: `[OBJECTION: ${ground.label} — ${ground.citation}] ${statement}`,
+  });
+
   let result;
   try {
-    result = await ruleObjection({
-      sessionId: session.id,
-      phase,
-      studentSide: session.studentSide,
-      activeWitness,
-      case: courtroomCaseBrief(courtCase),
-      utterance: statement,
-      workingMemory,
-      groundId: ground.id,
-    });
+    result = await ruleOnObjection(
+      {
+        sessionId: session.id,
+        phase,
+        studentSide: session.studentSide,
+        activeWitness,
+        case: courtroomCaseBrief(courtCase),
+        utterance: objectedTo,
+        workingMemory,
+      },
+      ground.id,
+      statement,
+    );
   } catch (err) {
-    req.log.error({ err }, "Objection ruling failed");
+    req.log.error({ err, groundId: ground.id }, "Objection ruling failed");
     res.status(500).json({ error: "Failed to rule on objection" });
     return;
+  }
+
+  // Grounding is not a guarantee. Attributed rather than raw: a provision the
+  // *student* invented and the bench then named while striking it is the system
+  // working, not failing. Computed before the insert so the record carries the
+  // same attribution the warning does.
+  const fabricated =
+    result.citationAudit.agentFabricated ??
+    result.citationAudit.checks
+      .filter((check) => check.status === "not_found")
+      .map((check) => check.raw);
+  if (fabricated.length > 0) {
+    req.log.warn(
+      { sessionId: session.id, groundId: ground.id, fabricated },
+      "Bench cited provisions absent from the corpus while ruling on an objection",
+    );
   }
 
   req.log.info(
@@ -931,43 +972,19 @@ router.post("/sessions/:id/objection", async (req, res): Promise<void> => {
     "Bench ruled on a student objection",
   );
 
-  // Grounding is not a guarantee. Attributed rather than raw, matching the
-  // voice turn: a provision the *student* invented and the bench then named
-  // while striking it is the system working, not failing.
-  const fabricated =
-    result.citationAudit.agentFabricated ??
-    result.citationAudit.checks
-      .filter((check) => check.status === "not_found")
-      .map((check) => check.raw);
-  if (fabricated.length > 0) {
-    req.log.warn(
-      { sessionId: session.id, groundId: ground.id, fabricated },
-      "Judge cited provisions absent from the corpus while ruling on an objection",
+  // Persisted through the same recorder the courtroom turn uses, so a
+  // hand-raised objection and an agent-raised one leave the same shape of
+  // record — including the bench's reasoning trace, which the prompt that used
+  // to live here produced none of, and the provenance behind it.
+  if (result.events.length > 0) {
+    await db.insert(turnsTable).values(
+      result.events.map((event) => ({
+        sessionId: session.id,
+        phase,
+        ...recordEvent(event, result.objection, activeWitness, fabricated),
+      })),
     );
   }
-
-  await db.transaction(async (tx) => {
-    await tx.insert(turnsTable).values({
-      sessionId: session.id,
-      phase,
-      speaker: "student",
-      witnessName: null,
-      transcript: `[OBJECTION: ${ground.label} — ${ground.citation}] ${statement}`,
-    });
-
-    // Through `recordEvent`, so a ruling the student's objection drew is
-    // written exactly like one an agent's objection drew — including the ReAct
-    // trace, which this route used to drop on the floor.
-    if (result.events.length > 0) {
-      await tx.insert(turnsTable).values(
-        result.events.map((event) => ({
-          sessionId: session.id,
-          phase,
-          ...recordEvent(event, result.objection, activeWitness, fabricated),
-        })),
-      );
-    }
-  });
 
   const updated = await loadSessionDetail(session.id, currentUserId(req));
   if (!updated || !updated.courtCase) {

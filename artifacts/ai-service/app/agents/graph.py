@@ -262,7 +262,7 @@ async def build_context(request: TurnRequest) -> AgentContext:
     return context
 
 
-def _audit_to_dict(
+def audit_to_dict(
     audit: CitationAudit, echoed: frozenset[str] = frozenset()
 ) -> dict:
     """Serialises an audit, marking citations the student had already made.
@@ -354,7 +354,7 @@ async def run_turn_stream(request: TurnRequest) -> AsyncIterator[dict]:
                         if objection is not None
                         else None
                     ),
-                    "citationAudit": _audit_to_dict(
+                    "citationAudit": audit_to_dict(
                         await audit_citations(event.transcript), echoed
                     ),
                 }
@@ -369,7 +369,7 @@ async def run_turn_stream(request: TurnRequest) -> AsyncIterator[dict]:
             objection.model_dump(by_alias=True) if objection is not None else None
         ),
         "primarySpeaker": events[-1].speaker if events else None,
-        "citationAudit": _audit_to_dict(await audit_citations(spoken), echoed),
+        "citationAudit": audit_to_dict(await audit_citations(spoken), echoed),
     }
 
 
