@@ -9,9 +9,11 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agents import (
+    StatedObjectionRequest,
     TurnRequest,
     graph_mermaid,
     run_interjection,
+    run_stated_objection,
     run_turn,
     run_turn_stream,
 )
@@ -69,6 +71,22 @@ async def courtroom_interject(request: TurnRequest) -> dict:
     not an objection returns no events rather than being forced into one.
     """
     return await run_interjection(request)
+
+
+@router.post("/courtroom/objection")
+async def courtroom_objection(request: StatedObjectionRequest) -> dict:
+    """Rules on an objection the student raised from the objection dialog.
+
+    The ground is already named, so nothing is classified; the bench runs the
+    same ReAct loop it runs for an objection opposing counsel raised, and
+    returns the trace with the ruling. Until this existed the Node API built
+    this one prompt itself, which made it the only ruling in the system that
+    could not show what the judge had read.
+    """
+    try:
+        return await run_stated_objection(request)
+    except ValueError as err:
+        raise HTTPException(status_code=400, detail=str(err)) from err
 
 
 @router.post("/courtroom/turn/stream")

@@ -234,7 +234,7 @@ legal-reasoning score fall.
 | Witness does **not** answer after a sustained objection | The graph is routing correctly; this is asserted, never a model opinion |
 | ReAct trace shows Arts. 137 **and** 136 **and** 138 | The bench read the exception, not just the rule |
 | Ground cited matches the ground named | The objection is reasoned, not scripted |
-| ⚠ on Constitution Art. 199, ✓ on everything else | Provenance is reading the real per-provision flag |
+| ✓ on every provision in the rail | Provenance is reading the real per-provision flag, and nothing is flagged today |
 
 ## Honest limits
 

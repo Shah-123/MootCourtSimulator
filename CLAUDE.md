@@ -38,13 +38,14 @@ dishonest product. If a task seems to require breaking one, stop and say so.
   `src/lib/ai-service.ts` for anything requiring a model.
 - **The browser never talks to the Python service.** Same-origin `/api/*` only.
   OpenAI credentials exist in the API and AI services, never in the web app.
-- *Known exception, do not treat as precedent:* the manually-raised objection
-  ruling (`routes/sessions.ts`) still builds a prompt and calls the model inside
-  Express. Moving that reasoning behind the AI service is pending work (§6), not
-  a pattern to copy. Case generation used to be a second exception and no longer
-  is — `routes/cases.ts` delegates to `POST /cases/generate`. Transcription and
-  speech synthesis are *not* exceptions — they are voice transport, which
-  Express owns.
+- **There is no exception left.** Express builds no prompt and makes no model
+  call of its own. The last two moved out: case generation to
+  `POST /cases/generate`, and the manually-raised objection ruling to
+  `POST /courtroom/objection` (2026-09-04) — `routes/sessions.ts` now hands the
+  ground and the record to the same ReAct bench that rules on an agent's
+  objection, and persists the trace it returns. Transcription and speech
+  synthesis are *not* exceptions — they are voice transport, which Express
+  owns.
 
 ### Schema ownership
 
@@ -246,9 +247,12 @@ Behavioural checks (read-only, safe):
 pnpm run simulate-courtroom <sessionId> --phase witness_examination --witness "Sana Arif" "<utterance>"
 ```
 
-```bash
-pnpm run simulate-turn <sessionId> "<utterance>"
-```
+`simulate-courtroom` is the only behavioural check, and it drives the same
+`runCourtroomTurn` the text and voice endpoints do. `simulate-turn` was removed
+on 2026-09-04: it built its own prompt in Express and called one model, so it
+had stopped measuring the product entirely — the same failure §3 forbids for
+the eval harness. Its one unique output, the two-tier memory state, is now
+printed by `simulate-courtroom`.
 
 **Honest limits:** there is no audio device in the agent environment, so **voice
 paths cannot be verified here** — implement them, then say plainly that a mic
@@ -308,6 +312,15 @@ heard: a witness *answering*. That run was a sustained objection, where the
 graph routes to `END` and silence is the correct behaviour, so the witness's
 voice remains the one link nobody has listened to.
 
+**Done 2026-09-04:** citation provenance is persisted, not only streamed
+(`turns.provenance` in `lib/db/src/schema/turns.ts`, written through
+`recordEvent`, rendered by the record's rail). Before this a reload left the
+rail with one regex-parsed citation and no ⚠ marks at all, so the honesty
+machinery in §2 was silently absent from every reloaded session. **This adds a
+column, so an existing database needs `pnpm run db:push` before the app will
+serve a session.** Turns written before it read `provenance: null` and fall back
+to the old prefix-parsed citation.
+
 **Pending — this is where effort belongs:**
 
 - **Hear a witness answer.** The objection → ruling half of the sequence is
@@ -321,11 +334,15 @@ voice remains the one link nobody has listened to.
   looking right.
 - **Transcription latency (4.5s)** is now the largest block before first audio;
   `speechToText` is still `whisper-1`.
-- **Reasoning still in Express — one route left.** The manually-raised objection
-  ruling still builds a prompt and calls the model in `routes/sessions.ts`; it
-  belongs behind the AI service (see §1). Case generation has already moved:
-  `routes/cases.ts` now delegates to `POST /cases/generate`
-  (`app/routers/casegen.py` → `app/casegen.py`) and builds no prompt of its own.
+- **Reasoning in Express — done, no route left (2026-09-04).** The
+  manually-raised objection ruling moved to `POST /courtroom/objection`
+  (`app/routers/courtroom.py` → `run_stated_objection` in
+  `app/agents/interjection.py`), which reuses `rule_on_objection` — so a student
+  objection now draws the same three-round ReAct bench as an agent's, and the
+  trace is persisted on the turn instead of discarded. Case generation moved
+  earlier to `POST /cases/generate`. **Not yet done for this route: the ruling
+  is still not spoken.** It returns as JSON to a dialog, where every graph
+  ruling is streamed and synthesized.
 - **LLMOps (#7).** Cost and latency are metered per call (`app/telemetry.py`)
   and reported by `eval:courtroom`. Every eval run is now recorded to MLflow
   (`eval/tracking.py` — metrics, the settings and commit that produced them, and

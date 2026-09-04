@@ -466,6 +466,29 @@ export async function runInterjection(
   });
 }
 
+/** A turn's context plus the ground counsel picked in the objection dialog. */
+export interface StatedObjectionRequest extends CourtroomTurnRequest {
+  groundId: string;
+}
+
+/**
+ * Rules on an objection the student raised from the dialog.
+ *
+ * The same ReAct bench that rules on an objection opposing counsel raised: it
+ * reads the ground's provision and its neighbours with `search_statute` before
+ * ruling, and returns the trace. This route used to build its prompt and call
+ * the model inside Express — the last reasoning left on the Node side, and the
+ * only ruling whose basis the record could not show.
+ */
+export async function ruleObjection(
+  payload: StatedObjectionRequest,
+): Promise<InterjectionResult> {
+  return request("/courtroom/objection", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 /** One message from the courtroom stream: an agent event, or the closing summary. */
 export type CourtroomStreamMessage =
   | {

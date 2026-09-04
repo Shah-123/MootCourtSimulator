@@ -21,7 +21,11 @@ import {
   turnsTable,
   type Turn,
 } from "@workspace/db";
-import { runCourtroomTurn, type CourtEvent } from "../lib/ai-service";
+import {
+  getSessionMemory,
+  runCourtroomTurn,
+  type CourtEvent,
+} from "../lib/ai-service";
 import {
   courtroomCaseBrief,
   isSessionPhase,
@@ -132,6 +136,18 @@ async function main() {
     `\nSESSION ${sessionId} · phase ${phase} · student = ${session.studentSide}` +
       (activeWitness ? ` · witness on stand: ${activeWitness}` : ""),
   );
+  // Both tiers of memory, stated before the turn rather than inferred from
+  // it. The agents read the earlier-phase recollection through the service,
+  // so a turn that ignores what the student conceded two phases ago is only
+  // diagnosable if you can see whether the recollection reached them at all.
+  // The retired `simulate-turn` script was the only thing that showed it.
+  const memory = await getSessionMemory(session.id, phase).catch(() => null);
+  console.log(
+    `long-term memory: ${
+      memory?.summary ? `${memory.studentClaims.length} prior claims` : "none"
+    } · working memory: ${workingMemory.length} turns in this phase`,
+  );
+
   console.log(`\nSTUDENT: "${utterance}"`);
 
   const result = await runCourtroomTurn({

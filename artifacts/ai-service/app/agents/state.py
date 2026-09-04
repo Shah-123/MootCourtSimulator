@@ -109,6 +109,20 @@ class TurnRequest(BaseModel):
     )
 
 
+class StatedObjectionRequest(TurnRequest):
+    """An objection the student raised from the objection dialog.
+
+    Unlike an interruption there is nothing to classify: counsel picked the
+    ground from the corpus-backed catalogue, so ``ground_id`` is given and
+    ``utterance`` is the argument offered in support of it. Everything else is
+    an ordinary turn's context, because the bench rules on the same record
+    however counsel got to their feet.
+    """
+
+    model_config = _CAMEL
+    ground_id: str = Field(alias="groundId")
+
+
 # ---------------------------------------------------------------------------
 # Agent outputs
 # ---------------------------------------------------------------------------

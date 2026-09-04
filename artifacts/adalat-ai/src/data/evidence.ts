@@ -41,9 +41,10 @@ export const MEASURED_ON = "5 August 2026";
  * `MEASURED_ON` stamp does not cover it: the counts are read off the corpus's
  * own per-provision `verified` flags, which move when the statute files move
  * and not when the code does. Dating it with the eval runs would have claimed a
- * currency it does not have — this figure was last stale by seven provisions.
+ * currency it does not have — and this figure has gone stale twice, once by
+ * seven provisions and once by the single article that closed the corpus.
  */
-export const CORPUS_CHECKED_ON = "13 August 2026";
+export const CORPUS_CHECKED_ON = "20 August 2026";
 
 export const SECTIONS: Section[] = [
   {
@@ -96,7 +97,7 @@ export const SECTIONS: Section[] = [
       { label: "sustained yet answered", value: "0", note: "the routing invariant held in all 32" },
     ],
     caveat:
-      "32 scenarios, single run. The ruling figure has been seen between 89% and 100% across runs with no judge change — this run returned 100%. The scenario labels were written by an engineer from provisions whose text is still being verified.",
+      "32 scenarios, single run. The ruling figure has been seen between 89% and 100% across runs with no judge change — this run returned 100%. The scenario labels were written by an engineer from provisions whose text has since been verified word-for-word against the official prints.",
   },
   {
     id: "redteam",
@@ -171,23 +172,25 @@ export const CORPUS = {
   // Read against the corpus files themselves on CORPUS_CHECKED_ON, not carried
   // over from a doc. It is marked here for the same reason every section is:
   // this figure is hand-transcribed from `data/statutes/*.json` rather than
-  // computed at runtime, so it can drift silently — and it did, sitting at 45
-  // of 53 for seven provisions after the corpus had moved on.
+  // computed at runtime, so it can drift silently — and it has, twice: at 45
+  // of 53 for seven provisions, then at 52 of 53 after the Constitution closed.
   freshness: "measured" as Freshness,
   total: 53,
-  confirmed: 52,
+  confirmed: 53,
   // Which official edition a provision was diffed against is part of the claim,
   // not an implementation detail. Three instruments are against the
-  // pakistancode.gov.pk prints; the Constitution is against the National
-  // Assembly print of 28 February 2012. Art. 199 is the case that proves the
-  // distinction matters — it is the one provision that cannot be confirmed, not
-  // because the text disagrees with that print but because it post-dates it.
+  // pakistancode.gov.pk prints; the Constitution is against the
+  // post-Twenty-seventh-Amendment (2025) print carried in `data/statutes/`,
+  // which is *not* the file-level `sourceUrl` — that still names the 2012
+  // National Assembly print the text originally came from. Art. 199 and Art. 10
+  // are why the edition is recorded rather than assumed: the older print could
+  // not confirm the first, and wrongly confirmed the second.
   statutes: [
     { code: "QSO 1984", confirmed: 20, total: 20 },
     { code: "PPC 1860", confirmed: 15, total: 15 },
     { code: "CrPC 1898", confirmed: 10, total: 10 },
-    { code: "Constitution 1973", confirmed: 7, total: 8 },
+    { code: "Constitution 1973", confirmed: 8, total: 8 },
   ],
   note:
-    "Every provision was written from model knowledge and each has since been diffed word-for-word against an official source, with the wording replaced from the source wherever the two disagreed. The Qanun-e-Shahadat, the Penal Code and the Code of Criminal Procedure now match their pakistancode.gov.pk prints in full, so their citations read ✓ rather than ⚠. The single exception is Constitution Art. 199 — the article every writ petition is filed under. It is not flagged because the text disagrees with the source but because it is later than it: it refers to the Federal Constitutional Court and to clause (1A) barring suo motu action, neither of which appears in the National Assembly print of 28 February 2012, so that print cannot confirm it. It carries a per-provision flag with a note saying exactly that, and nothing in the app presents it as authoritative law. Verification is per provision rather than per file, so one unconfirmed article neither hides behind its seven verified neighbours nor drags them down with it. Six numbering errors were found on the way, including an objection ground that cited Art. 143 for a rule that lives in Art. 148.",
+    "Every provision was written from model knowledge and each has since been diffed word-for-word against an official source, with the wording replaced from the source wherever the two disagreed — all fifty-three of them, so every citation in the app reads ✓. The Qanun-e-Shahadat, the Penal Code and the Code of Criminal Procedure match their pakistancode.gov.pk prints in full. The Constitution closed last, and how it closed is the part worth hearing. Art. 199 — the article every writ petition is filed under — carried ⚠ until 20 August 2026, not because its text disagreed with the source but because it was later than it: it refers to the Federal Constitutional Court and to clause (1A) barring suo motu action, neither of which appears in the National Assembly print of 28 February 2012. Re-diffing it against a post-Twenty-seventh-Amendment print confirmed it word-for-word — and caught Art. 10 drifting the other way: it had been marked verified against the 2012 print and was a sentence behind the law, because the 2025 amendment inserted “Supreme Court of” into its Review Board clause. A provision verified against a superseded print is not verified. Per-provision flags are what made both halves visible — a file-level flag would have marked Art. 199 verified because its neighbours were, and would never have surfaced Art. 10 at all. Six numbering errors were found on the way, including an objection ground that cited Art. 143 for a rule that lives in Art. 148. Nothing reads ⚠ today; the badge and the unverified-text marker are still live, and are what the next amendment lands on.",
 };

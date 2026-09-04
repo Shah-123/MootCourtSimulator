@@ -38,18 +38,16 @@ import {
   SendCourtroomTurnResponse,
 } from "@workspace/api-zod";
 import {
-  auditCitations,
   findObjectionGround,
   listObjectionGrounds,
   refreshSessionMemory,
+  ruleObjection,
   runCourtroomTurn,
   runInterjection,
   scoreVerdict,
-  searchStatutes,
   streamCourtroomTurn,
   type CourtroomStreamMessage,
 } from "../lib/ai-service";
-import { openai } from "@workspace/integrations-openai-ai-server";
 import {
   ensureCompatibleFormat,
   speechToText,
@@ -337,14 +335,6 @@ router.post("/sessions/:id/voice-turns", async (req, res): Promise<void> => {
 
       const { event, objection, citationAudit } = message;
 
-      // On the record before it is spoken: a student who closes the tab
-      // halfway through an answer still has the objection and the ruling.
-      await db.insert(turnsTable).values({
-        sessionId: session.id,
-        phase,
-        ...recordEvent(event, objection, activeWitness),
-      });
-
       // Grounding is not a guarantee. This utterance was audited before it was
       // spoken, so a provision the agent invented is flagged on the line that
       // carried it rather than at the end of the turn.
@@ -359,6 +349,16 @@ router.post("/sessions/:id/voice-turns", async (req, res): Promise<void> => {
         citationAudit.checks
           .filter((check) => check.status === "not_found")
           .map((check) => check.raw);
+
+      // On the record before it is spoken: a student who closes the tab
+      // halfway through an answer still has the objection and the ruling —
+      // and, since the audit runs first, the provenance behind both.
+      await db.insert(turnsTable).values({
+        sessionId: session.id,
+        phase,
+        ...recordEvent(event, objection, activeWitness, fabricated),
+      });
+
       if (fabricated.length > 0) {
         req.log.warn(
           { sessionId: session.id, speaker: event.speaker, fabricated },
@@ -833,114 +833,76 @@ router.post("/sessions/:id/objection", async (req, res): Promise<void> => {
 
   const { session, courtCase, turns } = detail;
 
-  if (session.status === "completed" || session.phase === "verdict") {
+  if (
+    session.status === "completed" ||
+    session.phase === "verdict" ||
+    !isSessionPhase(session.phase) ||
+    !isStudentSide(session.studentSide)
+  ) {
     res.status(400).json({ error: "Session has already concluded" });
     return;
   }
 
+  const phase = session.phase;
   const statement = body.data.statement?.trim() || "Objection, My Lord!";
 
-  const recentTurnsText = turns
-    .slice(-5)
-    .map(
-      (t) =>
-        `[${t.speaker}${t.witnessName ? ` (${t.witnessName})` : ""}]: ${t.transcript}`,
-    )
-    .join("\n");
+  // Same context a turn gets: the bench rules on the record, not on the last
+  // five lines. The neighbouring provisions this ruling turns on are no longer
+  // retrieved here either — the judge's ReAct loop reads them itself with
+  // `search_statute`, which is why the trace can now be shown with the ruling.
+  const activeWitness =
+    [...turns]
+      .reverse()
+      .find((t) => t.speaker === "witness" && t.phase === phase)?.witnessName ??
+    null;
 
-  // Retrieve neighbouring provisions as well as the one behind the ground:
-  // a leading-question objection is decided by reading Art. 137 together with
-  // 136 and 138, and the judge should see all three before ruling.
-  const related = await searchStatutes(
-    `${ground.label}. ${ground.description} ${statement}`,
-    { topK: 4, statuteCodes: ["QSO_1984", "CRPC_1898"], rerank: false },
-  );
+  const workingMemory = turns
+    .filter((t) => t.phase === phase)
+    .map((t) => ({
+      speaker: t.speaker,
+      witnessName: t.witnessName,
+      transcript: t.transcript,
+    }));
 
-  req.log.info(
-    {
-      sessionId: session.id,
-      groundId: ground.id,
-      retrieved: related.results.length,
-    },
-    "Ruling on objection grounded in retrieved provisions",
-  );
-
-  const prompt = `Case Title: ${courtCase.title}
-Area of Law: ${courtCase.areaOfLaw}
-Current Phase: ${session.phase}
-
-Counsel raised an OBJECTION on the ground of: ${ground.label}
-Supporting argument by counsel: "${statement}"
-
-Recent Courtroom Proceedings:
-${recentTurnsText || "(No prior transcript available.)"}
-
-THE PROVISION THIS GROUND RESTS ON:
-${ground.citation} — ${ground.heading}
-${ground.content}
-
-OTHER PROVISIONS RETRIEVED AS RELEVANT:
-${related.promptBlock}
-
-Rule on the objection using only the provisions reproduced above. Cite them by
-their exact citation strings. Do not cite any article or section that does not
-appear above — if the governing provision is not among them, say so plainly
-rather than citing from memory.
-
-Respond with strict JSON only, matching this shape:
-{
-  "ruling": "Sustained" or "Overruled",
-  "explanation": string (2-3 sentences explaining the ruling, citing the provisions relied on),
-  "impact": string (1 sentence of instruction to counsel or the witness)
-}`;
-
-  let parsedRuling: { ruling?: string; explanation?: string; impact?: string };
+  let result;
   try {
-    const completion = await openai.chat.completions.create({
-      model: process.env.MODEL_TEXT || "gpt-4o",
-      max_completion_tokens: 1024,
-      response_format: { type: "json_object" },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an authoritative, learned Pakistani High Court Judge presiding over a moot court. You rule only on the statutory text placed before you.",
-        },
-        { role: "user", content: prompt },
-      ],
+    result = await ruleObjection({
+      sessionId: session.id,
+      phase,
+      studentSide: session.studentSide,
+      activeWitness,
+      case: courtroomCaseBrief(courtCase),
+      utterance: statement,
+      workingMemory,
+      groundId: ground.id,
     });
-    parsedRuling = JSON.parse(
-      completion.choices[0]?.message?.content ?? "{}",
-    ) as typeof parsedRuling;
   } catch (err) {
     req.log.error({ err }, "Objection ruling failed");
     res.status(500).json({ error: "Failed to rule on objection" });
     return;
   }
 
-  const rulingType =
-    parsedRuling.ruling?.toLowerCase() === "sustained"
-      ? "SUSTAINED"
-      : "OVERRULED";
-  const explanation =
-    parsedRuling.explanation?.trim() ||
-    `The Bench has considered the objection under ${ground.citation}.`;
-  const impact =
-    parsedRuling.impact?.trim() || "Counsel may proceed with the argument.";
+  req.log.info(
+    {
+      sessionId: session.id,
+      groundId: ground.id,
+      ruling: result.events[0]?.ruling ?? null,
+      reasoningSteps: result.events[0]?.reasoning?.length ?? 0,
+    },
+    "Bench ruled on a student objection",
+  );
 
-  // The ruling is grounded, but grounding is not a guarantee. Anything the
-  // judge cited that is not in the corpus is flagged rather than passed on to
-  // the student as law.
-  const audit = await auditCitations(`${explanation} ${impact}`);
-  if (audit.hallucinated > 0) {
+  // Grounding is not a guarantee. Attributed rather than raw, matching the
+  // voice turn: a provision the *student* invented and the bench then named
+  // while striking it is the system working, not failing.
+  const fabricated =
+    result.citationAudit.agentFabricated ??
+    result.citationAudit.checks
+      .filter((check) => check.status === "not_found")
+      .map((check) => check.raw);
+  if (fabricated.length > 0) {
     req.log.warn(
-      {
-        sessionId: session.id,
-        groundId: ground.id,
-        fabricated: audit.checks
-          .filter((check) => check.status === "not_found")
-          .map((check) => check.raw),
-      },
+      { sessionId: session.id, groundId: ground.id, fabricated },
       "Judge cited provisions absent from the corpus while ruling on an objection",
     );
   }
@@ -948,19 +910,24 @@ Respond with strict JSON only, matching this shape:
   await db.transaction(async (tx) => {
     await tx.insert(turnsTable).values({
       sessionId: session.id,
-      phase: session.phase,
+      phase,
       speaker: "student",
       witnessName: null,
       transcript: `[OBJECTION: ${ground.label} — ${ground.citation}] ${statement}`,
     });
 
-    await tx.insert(turnsTable).values({
-      sessionId: session.id,
-      phase: session.phase,
-      speaker: "judge",
-      witnessName: null,
-      transcript: `[RULING: ${rulingType}] ${explanation} ${impact}`,
-    });
+    // Through `recordEvent`, so a ruling the student's objection drew is
+    // written exactly like one an agent's objection drew — including the ReAct
+    // trace, which this route used to drop on the floor.
+    if (result.events.length > 0) {
+      await tx.insert(turnsTable).values(
+        result.events.map((event) => ({
+          sessionId: session.id,
+          phase,
+          ...recordEvent(event, result.objection, activeWitness, fabricated),
+        })),
+      );
+    }
   });
 
   const updated = await loadSessionDetail(session.id, currentUserId(req));
@@ -1076,14 +1043,20 @@ router.post("/sessions/:id/turn", async (req, res): Promise<void> => {
 
   // Grounding is not a guarantee: anything an agent cited that is not in the
   // corpus is logged rather than passed to the student as settled law.
-  if (result.citationAudit.hallucinated > 0) {
+  //
+  // Attributed, not raw: `hallucinated` counts a fake section the *student*
+  // invented and the bench then named while striking it, which would report the
+  // system working correctly as the system failing. The voice turn already reads
+  // the attributed field; this one used to disagree with it about the same
+  // audit.
+  const fabricated =
+    result.citationAudit.agentFabricated ??
+    result.citationAudit.checks
+      .filter((check) => check.status === "not_found")
+      .map((check) => check.raw);
+  if (fabricated.length > 0) {
     req.log.warn(
-      {
-        sessionId: session.id,
-        fabricated: result.citationAudit.checks
-          .filter((check) => check.status === "not_found")
-          .map((check) => check.raw),
-      },
+      { sessionId: session.id, fabricated },
       "An agent cited provisions absent from the corpus during a turn",
     );
   }

@@ -13,7 +13,6 @@
     "statutes:reindex": "node ./scripts/ingest-statutes.mjs --force",
     "statutes:verify": "python ./scripts/verify-statutes.py",
     "simulate-courtroom": "pnpm --filter @workspace/api-server run simulate-courtroom",
-    "simulate-turn": "pnpm --filter @workspace/api-server run simulate-turn",
     "eval": "cd artifacts/ai-service && python -m eval.run_eval",
     "eval:courtroom": "cd artifacts/ai-service && python -m eval.courtroom_eval",
     "eval:redteam": "cd artifacts/ai-service && python -m eval.redteam_eval",

@@ -24,6 +24,32 @@ export interface ReasoningStep {
   observation: string;
 }
 
+/**
+ * A provision an agent leant on, with the corpus's own verification flag.
+ *
+ * Mirrors `GroundedProvision` in the OpenAPI contract.
+ */
+export interface GroundedProvision {
+  citation: string;
+  heading: string;
+  verified: boolean;
+}
+
+/**
+ * What an utterance rested on, and what could not be found at all.
+ *
+ * Mirrors `TurnProvenance` in the contract. The voice stream has always sent
+ * this per event so the live caption could mark an unverified provision, but
+ * it was never written down: reloading the page left the record showing words
+ * with no provenance behind them, and the "not in corpus" mark disappeared
+ * entirely. A record of proceedings that forgets what the bench was relying on
+ * is not a record.
+ */
+export interface TurnProvenance {
+  grounded: GroundedProvision[];
+  fabricated: string[];
+}
+
 export const turnsTable = pgTable("turns", {
   id: serial("id").primaryKey(),
   sessionId: integer("session_id")
@@ -39,6 +65,10 @@ export const turnsTable = pgTable("turns", {
   // answer, or why it could not. Absence means "this turn had no reasoning to
   // show", never "the reasoning was lost".
   reasoning: jsonb("reasoning").$type<ReasoningStep[]>(),
+  // Null when there was nothing to record — the student's own words, or a turn
+  // written before this column existed. Empty-but-present would claim the
+  // audit ran and found nothing, which is a different statement.
+  provenance: jsonb("provenance").$type<TurnProvenance>(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

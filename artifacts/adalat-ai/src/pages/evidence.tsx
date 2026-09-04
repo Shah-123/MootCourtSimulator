@@ -74,8 +74,10 @@ export default function EvidencePage() {
           />
         </div>
 
-        {/* The outstanding provision is named here rather than rounded away.
-            It is the reason this reads "52 of 53" and not "verified". */}
+        {/* The note runs at length rather than being rounded to a tick.
+            Nothing is outstanding now, but how the last article closed — and
+            which article the same run caught going the other way — is the
+            answer to "how do you know your law is right?". */}
         <p className="mt-4 border-l-2 border-rule pl-4 font-serif leading-relaxed text-muted-foreground">
           {CORPUS.note}
         </p>

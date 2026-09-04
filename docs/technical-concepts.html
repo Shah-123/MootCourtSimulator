@@ -248,11 +248,12 @@
   the two servers and never reaches a user's machine.
 </p>
 
-<div class="limit">
-  <strong>One exception, and it is known.</strong> The manually-raised objection
-  ruling still builds a prompt inside the Express server rather than calling the
-  Python service. It is the last violation of that boundary and it is recorded
-  as pending work rather than quietly tolerated.
+<div class="measured">
+  <strong>No exception remains.</strong> The manually-raised objection ruling was
+  the last piece of reasoning inside the Express server; on 4 September 2026 it
+  moved behind <code>POST /courtroom/objection</code> and now runs on the same
+  ReAct bench as an objection raised by the agents. Express builds no prompt and
+  makes no model call of its own.
 </div>
 
 <h3>Contract-first design with generated validators</h3>
@@ -355,11 +356,18 @@
 </p>
 
 <div class="measured">
-  <strong>52 of 53</strong> provisions have been compared word-for-word against
+  <strong>53 of 53</strong> provisions have been compared word-for-word against
   their official printed source and carry a per-provision verified flag. Reproduce
-  with <code>pnpm run statutes:verify</code>. The exception is Constitution Article
-  199, whose text is <em>later</em> than the available print, so it cannot be
-  confirmed and is flagged unverified rather than assumed correct.
+  with <code>pnpm run statutes:verify</code>. Constitution Article 199 was the last
+  to close, on 20 August 2026: its text is <em>later</em> than the 2012 print its
+  neighbours were diffed against, so it was flagged unverified rather than assumed
+  correct until a post-Twenty-seventh-Amendment print confirmed it word-for-word.
+  The same run caught Article 10 drifting the other way &mdash; verified against
+  the 2012 print, and a sentence behind the law once the 2025 amendment inserted
+  &ldquo;Supreme Court of&rdquo; into its Review Board clause. A provision verified
+  against a superseded print is not verified, which is why the flag is per
+  provision: a file-level flag would have passed Article 199 on its neighbours and
+  would never have surfaced Article 10 at all.
 </div>
 
 <h3>Best Matching 25

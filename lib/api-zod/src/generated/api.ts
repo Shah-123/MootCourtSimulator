@@ -301,6 +301,14 @@ export const CreateSessionResponse = zod.object({
   "action": zod.string(),
   "observation": zod.string()
 }).describe('One Thought-Action-Observation step of the judge\'s ReAct loop.')).nullable().describe('The judge\'s ReAct trace for this turn, when it has one. Null for every speaker but the bench, and for rulings made without the tool loop — absence means there was no reasoning to show, not that it was lost.\n'),
+  "provenance": zod.union([zod.object({
+  "grounded": zod.array(zod.object({
+  "citation": zod.string(),
+  "heading": zod.string(),
+  "verified": zod.boolean()
+}).describe('A provision an agent relied on, carried for provenance.')),
+  "fabricated": zod.array(zod.string()).describe('Citations the agent introduced that are absent from the corpus. Attributed, not raw — a provision the student invented and the bench named while striking it is not listed here.\n')
+}).describe('What an utterance leant on, and what could not be found. Kept together because they are the same claim about the same words: these provisions exist and carry these flags, and these citations do not exist at all.\n'),zod.null()]).describe('The provisions this utterance rested on, kept with the utterance. The voice stream carries these per event, but until they were persisted the record lost them on reload: a provision\'s verification state, and anything the audit could not find at all, survived only as long as the tab was open. Null for a turn recorded before this existed, and for the student\'s own words.\n'),
   "createdAt": zod.coerce.date()
 })),
   "verdict": zod.union([zod.object({
@@ -406,6 +414,14 @@ export const GetSessionResponse = zod.object({
   "action": zod.string(),
   "observation": zod.string()
 }).describe('One Thought-Action-Observation step of the judge\'s ReAct loop.')).nullable().describe('The judge\'s ReAct trace for this turn, when it has one. Null for every speaker but the bench, and for rulings made without the tool loop — absence means there was no reasoning to show, not that it was lost.\n'),
+  "provenance": zod.union([zod.object({
+  "grounded": zod.array(zod.object({
+  "citation": zod.string(),
+  "heading": zod.string(),
+  "verified": zod.boolean()
+}).describe('A provision an agent relied on, carried for provenance.')),
+  "fabricated": zod.array(zod.string()).describe('Citations the agent introduced that are absent from the corpus. Attributed, not raw — a provision the student invented and the bench named while striking it is not listed here.\n')
+}).describe('What an utterance leant on, and what could not be found. Kept together because they are the same claim about the same words: these provisions exist and carry these flags, and these citations do not exist at all.\n'),zod.null()]).describe('The provisions this utterance rested on, kept with the utterance. The voice stream carries these per event, but until they were persisted the record lost them on reload: a provision\'s verification state, and anything the audit could not find at all, survived only as long as the tab was open. Null for a turn recorded before this existed, and for the student\'s own words.\n'),
   "createdAt": zod.coerce.date()
 })),
   "verdict": zod.union([zod.object({
@@ -577,6 +593,14 @@ export const CallWitnessResponse = zod.object({
   "action": zod.string(),
   "observation": zod.string()
 }).describe('One Thought-Action-Observation step of the judge\'s ReAct loop.')).nullable().describe('The judge\'s ReAct trace for this turn, when it has one. Null for every speaker but the bench, and for rulings made without the tool loop — absence means there was no reasoning to show, not that it was lost.\n'),
+  "provenance": zod.union([zod.object({
+  "grounded": zod.array(zod.object({
+  "citation": zod.string(),
+  "heading": zod.string(),
+  "verified": zod.boolean()
+}).describe('A provision an agent relied on, carried for provenance.')),
+  "fabricated": zod.array(zod.string()).describe('Citations the agent introduced that are absent from the corpus. Attributed, not raw — a provision the student invented and the bench named while striking it is not listed here.\n')
+}).describe('What an utterance leant on, and what could not be found. Kept together because they are the same claim about the same words: these provisions exist and carry these flags, and these citations do not exist at all.\n'),zod.null()]).describe('The provisions this utterance rested on, kept with the utterance. The voice stream carries these per event, but until they were persisted the record lost them on reload: a provision\'s verification state, and anything the audit could not find at all, survived only as long as the tab was open. Null for a turn recorded before this existed, and for the student\'s own words.\n'),
   "createdAt": zod.coerce.date()
 })),
   "verdict": zod.union([zod.object({
@@ -689,6 +713,14 @@ export const AdvanceSessionPhaseResponse = zod.object({
   "action": zod.string(),
   "observation": zod.string()
 }).describe('One Thought-Action-Observation step of the judge\'s ReAct loop.')).nullable().describe('The judge\'s ReAct trace for this turn, when it has one. Null for every speaker but the bench, and for rulings made without the tool loop — absence means there was no reasoning to show, not that it was lost.\n'),
+  "provenance": zod.union([zod.object({
+  "grounded": zod.array(zod.object({
+  "citation": zod.string(),
+  "heading": zod.string(),
+  "verified": zod.boolean()
+}).describe('A provision an agent relied on, carried for provenance.')),
+  "fabricated": zod.array(zod.string()).describe('Citations the agent introduced that are absent from the corpus. Attributed, not raw — a provision the student invented and the bench named while striking it is not listed here.\n')
+}).describe('What an utterance leant on, and what could not be found. Kept together because they are the same claim about the same words: these provisions exist and carry these flags, and these citations do not exist at all.\n'),zod.null()]).describe('The provisions this utterance rested on, kept with the utterance. The voice stream carries these per event, but until they were persisted the record lost them on reload: a provision\'s verification state, and anything the audit could not find at all, survived only as long as the tab was open. Null for a turn recorded before this existed, and for the student\'s own words.\n'),
   "createdAt": zod.coerce.date()
 })),
   "verdict": zod.union([zod.object({
@@ -803,6 +835,14 @@ export const RaiseObjectionResponse = zod.object({
   "action": zod.string(),
   "observation": zod.string()
 }).describe('One Thought-Action-Observation step of the judge\'s ReAct loop.')).nullable().describe('The judge\'s ReAct trace for this turn, when it has one. Null for every speaker but the bench, and for rulings made without the tool loop — absence means there was no reasoning to show, not that it was lost.\n'),
+  "provenance": zod.union([zod.object({
+  "grounded": zod.array(zod.object({
+  "citation": zod.string(),
+  "heading": zod.string(),
+  "verified": zod.boolean()
+}).describe('A provision an agent relied on, carried for provenance.')),
+  "fabricated": zod.array(zod.string()).describe('Citations the agent introduced that are absent from the corpus. Attributed, not raw — a provision the student invented and the bench named while striking it is not listed here.\n')
+}).describe('What an utterance leant on, and what could not be found. Kept together because they are the same claim about the same words: these provisions exist and carry these flags, and these citations do not exist at all.\n'),zod.null()]).describe('The provisions this utterance rested on, kept with the utterance. The voice stream carries these per event, but until they were persisted the record lost them on reload: a provision\'s verification state, and anything the audit could not find at all, survived only as long as the tab was open. Null for a turn recorded before this existed, and for the student\'s own words.\n'),
   "createdAt": zod.coerce.date()
 })),
   "verdict": zod.union([zod.object({
@@ -919,6 +959,14 @@ export const SendCourtroomTurnResponse = zod.object({
   "action": zod.string(),
   "observation": zod.string()
 }).describe('One Thought-Action-Observation step of the judge\'s ReAct loop.')).nullable().describe('The judge\'s ReAct trace for this turn, when it has one. Null for every speaker but the bench, and for rulings made without the tool loop — absence means there was no reasoning to show, not that it was lost.\n'),
+  "provenance": zod.union([zod.object({
+  "grounded": zod.array(zod.object({
+  "citation": zod.string(),
+  "heading": zod.string(),
+  "verified": zod.boolean()
+}).describe('A provision an agent relied on, carried for provenance.')),
+  "fabricated": zod.array(zod.string()).describe('Citations the agent introduced that are absent from the corpus. Attributed, not raw — a provision the student invented and the bench named while striking it is not listed here.\n')
+}).describe('What an utterance leant on, and what could not be found. Kept together because they are the same claim about the same words: these provisions exist and carry these flags, and these citations do not exist at all.\n'),zod.null()]).describe('The provisions this utterance rested on, kept with the utterance. The voice stream carries these per event, but until they were persisted the record lost them on reload: a provision\'s verification state, and anything the audit could not find at all, survived only as long as the tab was open. Null for a turn recorded before this existed, and for the student\'s own words.\n'),
   "createdAt": zod.coerce.date()
 })),
   "verdict": zod.union([zod.object({
