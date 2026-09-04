@@ -173,20 +173,26 @@ point and how much has to be worked out before the bench hears it.
 | --- | --- | --- | --- |
 | Opposing counsel, unprompted | `objection_screen` node | — | Counsel picks it from the catalogue |
 | The student, interrupting aloud | `POST /courtroom/interject` | Yes — was that even an objection? | Inferred, and refused if none fits |
-| The student, from the objection dialog | `POST /courtroom/objection` | No — nothing to infer | Named in the request |
+| The student, from the objection dialog | `POST /objections/rule` | No — nothing to infer | Named in the request, scoped to the proceeding |
 
 All three end in `rule_on_objection` ([`judge.py`](../app/agents/judge.py)): the
 same three-round ReAct loop, the same `search_statute` tool, the same recorded
-trace. The two student-raised paths also share `ruling_payload`
-([`interjection.py`](../app/agents/interjection.py)), so a ruling reaches the
-record identically however counsel got to their feet.
+trace. What changes between them is the `ObjectorVoice` the bench is given.
 
-The dialog path is the newest (4 September 2026) and is why the Express server
-now holds no prompt of its own. It used to build one there and call the model
-directly, which made it the only ruling in the system with no trace to show:
-the record could say *sustained* but not what the bench had read. It also could
-not object on more than the last five lines of transcript, where the graph
-reads the whole phase plus the cross-phase recollection.
+That is not a courtesy. Whether a question is leading depends on whose witness
+is on the stand, so a bench told the wrong party objected can rule the wrong way
+on identical words. `OPPOSING_COUNSEL` and `STUDENT` substitute three clauses
+each, and the student variant also changes what is put in front of the bench:
+counsel objects to the question the student just asked, while a student objects
+to somebody else's words already on the record, so
+[`objections.py`](../app/objections.py) sends the last recorded turn as the
+utterance and the student's statement as the objection.
+
+The dialog path is why the Express server holds no prompt of its own. It used to
+build one there and call the model directly — a *second bench*, handed a block of
+retrieved provisions and answering in one shot with no trace, while this one
+reads the corpus itself. Two judges ruling on the same kind of objection by
+different methods, with nothing forcing them to agree.
 
 The catalogue is filtered twice, and the two filters reject for different
 reasons. A ground whose provision is missing from the corpus is one we *cannot

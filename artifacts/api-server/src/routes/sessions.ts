@@ -869,7 +869,6 @@ router.post("/sessions/:id/objection", async (req, res): Promise<void> => {
     return;
   }
 
-  const phase = session.phase;
   // Resolved against this session's proceeding rather than the whole catalogue,
   // so a ground that does not exist here cannot be raised by posting its id
   // directly. In a writ that rejects all seven — which is the point, since the
@@ -880,11 +879,6 @@ router.post("/sessions/:id/objection", async (req, res): Promise<void> => {
   );
   if (!ground) {
     res.status(400).json({ error: "Unknown objection ground" });
-    return;
-  }
-
-  if (!isStudentSide(session.studentSide)) {
-    res.status(400).json({ error: "Session has an invalid student side" });
     return;
   }
 
