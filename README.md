@@ -156,8 +156,7 @@ pnpm run dev         # web app on :5173
 | `pnpm --filter @workspace/api-spec run codegen` | Regenerate the client + Zod validators from `openapi.yaml`. |
 | `pnpm --filter @workspace/db run push` | Apply the Drizzle schema to the database. |
 | `pnpm run statutes:ingest` / `statutes:reindex` | Ingest / force re-embed the statute corpus. |
-| `pnpm run simulate-courtroom <sessionId> "<utterance>"` | Drive one turn through the multi-agent graph and print the agent trace (read-only). |
-| `pnpm run simulate-turn <sessionId> "<utterance>"` | Single-persona text turn (evaluation baseline). |
+| `pnpm run simulate-courtroom <sessionId> "<utterance>"` | Drive one turn through the multi-agent graph and print the agent trace, memory state and citation audit (read-only). |
 | `pnpm run eval` | Run the evaluation suite (retrieval recall@k/MRR + judge reliability/discrimination). |
 
 Try the multi-agent system (both `dev:ai` and a seeded session required):
@@ -287,8 +286,13 @@ courtroom agents read it — the bench presses the student on grounds they actua
 pleaded. Every ground's citations are audited against the corpus before the case
 is stored, and a ground resting on a provision that does not exist is dropped
 rather than taught. Generation itself moved out of the Express route and behind
-the AI service, so the only prompt left on the Node side is the manually-raised
-objection ruling.
+the AI service. As of 4 September 2026 the manually-raised objection ruling has
+followed it, so **no prompt or model call is left on the Node side at all**: a
+student's own objection now draws the same ReAct bench as an agent's, reading
+the ground's provision and its neighbours before it rules, and the trace is
+persisted with the ruling rather than discarded. That ruling is still returned
+as JSON to the objection dialog rather than spoken, which every graph ruling
+is.
 
 The web app presents a session as a **record of proceedings** rather than a chat
 log: numbered paragraphs, a ruled speaker column, and a provenance rail carrying
@@ -298,6 +302,14 @@ the corpus's own `verified` flag per provision, so all 53 currently read
 corpus does not recognise is marked too, rather than passing silently. The ⚠ path
 is live and load-bearing even with nothing flagged today — it is what the next
 amendment lands on.
+
+That provenance is **persisted with the turn** (`turns.provenance`) as of
+4 September 2026, not only streamed. Until then it lived for as long as the tab
+was open: the stream carried each provision's flag to the live caption, but a
+reload left the record able to re-derive one citation from the `[OBJECTION: …]`
+prefix and nothing else — a ruling showed no provisions at all and the "not in
+corpus" mark disappeared. A record of proceedings that forgets what the bench
+was relying on is not a record.
 
 Note that a case stores its `citations` as a snapshot taken when it was
 generated, so cases drafted before the corpus was verified still show ⚠ against

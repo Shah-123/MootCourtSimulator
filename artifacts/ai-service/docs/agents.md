@@ -105,6 +105,30 @@ exists in the corpus (the catalogue is resolved from the statute book in
 by construction**. It is instructed to stay silent unless a ground clearly
 applies — an advocate who objects to everything is noise, not opposition.
 
+## The three ways an objection reaches the bench
+
+There is one judge and one ruling path. What differs is only who raised the
+point and how much has to be worked out before the bench hears it.
+
+| Raised by | Entry | Classified? | Ground |
+| --- | --- | --- | --- |
+| Opposing counsel, unprompted | `objection_screen` node | — | Counsel picks it from the catalogue |
+| The student, interrupting aloud | `POST /courtroom/interject` | Yes — was that even an objection? | Inferred, and refused if none fits |
+| The student, from the objection dialog | `POST /courtroom/objection` | No — nothing to infer | Named in the request |
+
+All three end in `rule_on_objection` ([`judge.py`](../app/agents/judge.py)): the
+same three-round ReAct loop, the same `search_statute` tool, the same recorded
+trace. The two student-raised paths also share `ruling_payload`
+([`interjection.py`](../app/agents/interjection.py)), so a ruling reaches the
+record identically however counsel got to their feet.
+
+The dialog path is the newest (4 September 2026) and is why the Express server
+now holds no prompt of its own. It used to build one there and call the model
+directly, which made it the only ruling in the system with no trace to show:
+the record could say *sustained* but not what the bench had read. It also could
+not object on more than the last five lines of transcript, where the graph
+reads the whole phase plus the cross-phase recollection.
+
 ## What the agents know about the case
 
 Every agent prompt embeds `AgentContext.case_context()`
@@ -273,7 +297,10 @@ words, or synthesis fails and the turn falls back to text. Audio cannot carry
 the written record's ⚠ badge either, so each `speaker` event ships the
 provenance (`grounded`, with each provision's `verified` flag) alongside the
 words, and the live caption shows the unverified warning while the line is
-being spoken.
+being spoken. The Node API writes the same provenance onto the turn it persists
+(`turns.provenance`), together with anything the audit could not find at all, so
+the written record still carries it after a reload rather than only while the
+tab is open.
 
 ### Measured, on a real request
 

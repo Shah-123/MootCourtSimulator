@@ -7,6 +7,7 @@
  */
 import type { CourtReasoningStep } from './courtReasoningStep';
 import type { SessionPhase } from './sessionPhase';
+import type { TurnProvenance } from './turnProvenance';
 import type { TurnSpeaker } from './turnSpeaker';
 
 export interface Turn {
@@ -22,5 +23,7 @@ export interface Turn {
      * @nullable
      */
   reasoning: CourtReasoningStep[] | null;
+  /** The provisions this utterance rested on, kept with the utterance. The voice stream carries these per event, but until they were persisted the record lost them on reload: a provision's verification state, and anything the audit could not find at all, survived only as long as the tab was open. Null for a turn recorded before this existed, and for the student's own words. */
+  provenance: TurnProvenance | null;
   createdAt: Date;
 }

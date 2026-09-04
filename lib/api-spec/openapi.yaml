@@ -1104,6 +1104,17 @@ components:
             was lost.
           items:
             $ref: "#/components/schemas/CourtReasoningStep"
+        provenance:
+          oneOf:
+            - $ref: "#/components/schemas/TurnProvenance"
+            - type: "null"
+          description: >
+            The provisions this utterance rested on, kept with the utterance.
+            The voice stream carries these per event, but until they were
+            persisted the record lost them on reload: a provision's
+            verification state, and anything the audit could not find at all,
+            survived only as long as the tab was open. Null for a turn recorded
+            before this existed, and for the student's own words.
         createdAt:
           type: string
           format: date-time
@@ -1115,7 +1126,31 @@ components:
         - witnessName
         - transcript
         - reasoning
+        - provenance
         - createdAt
+
+    TurnProvenance:
+      type: object
+      description: >
+        What an utterance leant on, and what could not be found. Kept together
+        because they are the same claim about the same words: these provisions
+        exist and carry these flags, and these citations do not exist at all.
+      properties:
+        grounded:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroundedProvision"
+        fabricated:
+          type: array
+          description: >
+            Citations the agent introduced that are absent from the corpus.
+            Attributed, not raw — a provision the student invented and the
+            bench named while striking it is not listed here.
+          items:
+            type: string
+      required:
+        - grounded
+        - fabricated
 
     Session:
       type: object

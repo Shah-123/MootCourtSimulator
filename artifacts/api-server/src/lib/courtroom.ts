@@ -1,4 +1,4 @@
-import type { Case, ReasoningStep } from "@workspace/db";
+import type { Case, ReasoningStep, TurnProvenance } from "@workspace/db";
 import type { CourtEvent, CourtObjection } from "./ai-service";
 
 export type SessionPhase =
@@ -35,31 +35,6 @@ export function isValidPhaseTransition(
   const currentIndex = PHASE_ORDER.indexOf(current);
   const nextIndex = PHASE_ORDER.indexOf(next);
   return nextIndex === currentIndex + 1;
-}
-
-export function oppositeSide(side: StudentSide): StudentSide {
-  return side === "petitioner" ? "respondent" : "petitioner";
-}
-
-/**
- * Decides which AI persona should reply to the student's next spoken turn,
- * based on the current courtroom phase and (if applicable) the most
- * recently called witness.
- */
-export function determineRespondingPersona(
-  phase: SessionPhase,
-  activeWitnessName: string | null,
-): { persona: TurnSpeaker; witnessName: string | null } {
-  if (
-    (phase === "witness_examination" || phase === "cross_examination") &&
-    activeWitnessName
-  ) {
-    return { persona: "witness", witnessName: activeWitnessName };
-  }
-  if (phase === "cross_examination") {
-    return { persona: "opposing_counsel", witnessName: null };
-  }
-  return { persona: "judge", witnessName: null };
 }
 
 /**
@@ -136,6 +111,13 @@ export interface RecordedEvent {
    * one that is merely asserted to be.
    */
   reasoning: ReasoningStep[] | null;
+  /**
+   * The provisions this utterance leant on, and anything the audit could not
+   * find. The same argument as `reasoning`, about the other half of the claim:
+   * the live stream already carried it, so a reload used to be the only thing
+   * standing between a student and the provenance of what they had just heard.
+   */
+  provenance: TurnProvenance | null;
 }
 
 const RULING_PREFIX = /^\[(SUSTAINED|OVERRULED)\]\s*/i;
@@ -158,11 +140,19 @@ export function recordEvent(
   event: CourtEvent,
   objection: CourtObjection | null,
   activeWitness: string | null,
+  // What the audit could not find in the corpus, attributed to this agent.
+  // Passed in rather than recomputed: the caller has already audited this
+  // utterance to decide whether to warn about it, and auditing it twice
+  // invites the record and the log to disagree about the same words.
+  fabricated: string[] = [],
 ): RecordedEvent {
   const witnessName = event.speaker === "witness" ? activeWitness : null;
   // Empty is stored as null rather than [], so "no trace" is one value in the
   // record instead of two the UI would each have to test for.
   const reasoning = event.reasoning?.length ? event.reasoning : null;
+  const grounded = event.grounded ?? [];
+  const provenance =
+    grounded.length || fabricated.length ? { grounded, fabricated } : null;
 
   if (event.kind === "objection") {
     // The event carries the ground *id*; the objection carries the label the
@@ -175,6 +165,7 @@ export function recordEvent(
       witnessName,
       transcript: `[OBJECTION: ${ground || "Evidentiary Objection"}] ${event.transcript}`,
       reasoning,
+      provenance,
     };
   }
 
@@ -184,6 +175,7 @@ export function recordEvent(
       witnessName,
       transcript: `[RULING: ${event.ruling.toUpperCase()}] ${event.transcript.replace(RULING_PREFIX, "")}`,
       reasoning,
+      provenance,
     };
   }
 
@@ -192,6 +184,7 @@ export function recordEvent(
     witnessName,
     transcript: event.transcript,
     reasoning,
+    provenance,
   };
 }
 
@@ -209,68 +202,4 @@ export function speechText(event: CourtEvent): string {
     return `${spokenRuling} ${event.transcript.replace(RULING_PREFIX, "")}`.trim();
   }
   return event.transcript.trim();
-}
-
-/**
- * Builds the system prompt that grounds the AI in its current role: judge,
- * opposing counsel, or a specific witness, for a specific Pakistani-law case.
- */
-export function buildSystemPrompt(
-  courtCase: Case,
-  studentSide: StudentSide,
-  phase: SessionPhase,
-  persona: TurnSpeaker,
-  witnessName: string | null,
-): string {
-  const studentParty =
-    studentSide === "petitioner"
-      ? courtCase.petitionerName
-      : courtCase.respondentName;
-  const studentRole =
-    studentSide === "petitioner"
-      ? courtCase.petitionerRole
-      : courtCase.respondentRole;
-  const opposingSide = oppositeSide(studentSide);
-  const opposingParty =
-    opposingSide === "petitioner"
-      ? courtCase.petitionerName
-      : courtCase.respondentName;
-  const opposingRole =
-    opposingSide === "petitioner"
-      ? courtCase.petitionerRole
-      : courtCase.respondentRole;
-
-  const caseContext = `
-Case: "${courtCase.title}" (${courtCase.areaOfLaw} matter under Pakistani law, difficulty: ${courtCase.difficulty})
-Summary: ${courtCase.summary}
-Applicable laws: ${courtCase.applicableLaws}
-Petitioner: ${courtCase.petitionerName} (${courtCase.petitionerRole})
-Respondent: ${courtCase.respondentName} (${courtCase.respondentRole})
-The student is arguing as the ${studentSide.toUpperCase()} -- ${studentParty}, ${studentRole}.
-Current courtroom phase: ${phase.replace("_", " ")}.
-`.trim();
-
-  if (persona === "judge") {
-    return `You are a stern but fair judge presiding over a Pakistani court, moderating a moot-court practice session. ${caseContext}
-
-Speak as the judge would in a Pakistani courtroom: measured, formal, addressing the student as "counsel" or "learned counsel". Respond briefly (2-4 sentences) to what the student just said -- acknowledge their point, probe with a pointed question about their legal reasoning or evidence, or direct them procedurally (e.g. to call a witness, or proceed to the next stage) when appropriate. Do not resolve the case yourself and do not give the student legal advice. Stay strictly in character as the judge.`;
-  }
-
-  if (persona === "opposing_counsel") {
-    return `You are opposing counsel representing ${opposingParty} (${opposingRole}) in a Pakistani court, cross-examining or rebutting the student who represents ${studentParty} (${studentRole}). ${caseContext}
-
-Speak as sharp, professional opposing counsel: challenge the student's argument, raise counterpoints grounded in the applicable laws, or pose a pointed cross-examination question. Keep responses brief (2-4 sentences) and combative but professional. Stay strictly in character.
-
-Say it in simple English, because your listener is a law student who is usually not a native speaker. One idea per sentence, under about 20 words. Use the everyday word, not the formal one: "before" not "prior to", "this" not "the aforesaid", "even though" not "notwithstanding", "bring evidence" not "adduce evidence", "enough" not "sufficient", "so" not "therefore". No Latin and no archaic words (inter alia, prima facie, hereinbefore, whilst, "it is submitted that"). Say your point first, then the reason. Keep "My Lord" and "learned counsel" as they are, and quote any statute in its own words before explaining it simply.`;
-  }
-
-  const witness = courtCase.witnesses.find((w) => w.name === witnessName);
-  const witnessStatement = witness?.statement ?? "";
-  const witnessRole = witness?.role ?? "witness";
-
-  return `You are ${witnessName}, a ${witnessRole} testifying as a witness in a Pakistani court. ${caseContext}
-
-Your known testimony/statement: "${witnessStatement}"
-
-Answer the student's question as this witness would: consistently with your statement, in first person, briefly (2-4 sentences), showing appropriate nervousness or confidence depending on the question. Do not break character or acknowledge you are an AI.`;
 }

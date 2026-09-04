@@ -25,7 +25,13 @@ import logging
 from app.agents.graph import build_context
 from app.agents.judge import rule_on_objection
 from app.agents.llm import json_completion
-from app.agents.state import CourtEvent, Objection, TurnRequest
+from app.agents.state import (
+    CourtEvent,
+    JudgeRuling,
+    Objection,
+    StatedObjectionRequest,
+    TurnRequest,
+)
 from app.rag.citations import audit_citations
 
 logger = logging.getLogger(__name__)
@@ -100,7 +106,17 @@ async def run_interjection(request: TurnRequest) -> dict:
     )
 
     ruling = await rule_on_objection(context, objection)
+    return {"isObjection": True, **await ruling_payload(objection, ruling)}
 
+
+async def ruling_payload(objection: Objection, ruling: JudgeRuling) -> dict:
+    """The bench's ruling in the shape a turn returns.
+
+    Shared by both paths a student can object on — the interruption and the
+    objection dialog — so a ruling reaches the record identically however
+    counsel got to their feet, and neither path can drift into its own idea of
+    what a ruling looks like.
+    """
     events = [
         CourtEvent(
             speaker="judge",
@@ -118,7 +134,6 @@ async def run_interjection(request: TurnRequest) -> dict:
     spoken = "\n".join(event.transcript for event in events)
     audit = await audit_citations(spoken)
     return {
-        "isObjection": True,
         "objection": objection.model_dump(by_alias=True),
         "events": [event.model_dump(by_alias=True) for event in events],
         "citationAudit": {
@@ -127,12 +142,48 @@ async def run_interjection(request: TurnRequest) -> dict:
             "hallucinated": audit.hallucinated,
             "accuracy": audit.accuracy,
             "checks": [check.to_dict() for check in audit.checks],
-            # The student's own interruption is the source of any citation here,
-            # so nothing in a ruling on it counts as the agent inventing law.
+            # The student's own words are the source of any citation here, so
+            # nothing in a ruling on them counts as the agent inventing law.
             "agentFabricated": [],
         },
         "note": None,
     }
+
+
+async def run_stated_objection(request: StatedObjectionRequest) -> dict:
+    """Rules on an objection raised from the dialog, ground already named.
+
+    This is the same bench, reading the same statute, as the one that rules on
+    an objection opposing counsel raised itself: one ReAct loop with
+    ``search_statute``, capped at three rounds, returning the trace it reasoned
+    over. It exists because the Express route used to build its own prompt and
+    call the model directly — the last piece of reasoning on the Node side, and
+    the only ruling in the system whose basis the record could not show.
+    """
+    context = await build_context(request)
+
+    ground = next(
+        (g for g in context.grounds if g.id == request.ground_id), None
+    )
+    if ground is None:
+        # Not a 500: the catalogue is the corpus, and a ground it does not hold
+        # is a bad request rather than a broken bench.
+        raise ValueError(f"Unknown objection ground: {request.ground_id}")
+
+    objection = Objection(
+        groundId=ground.id,
+        label=ground.label,
+        citation=ground.citation,
+        heading=ground.heading,
+        content=ground.content,
+        interjection=request.utterance.strip() or "Objection, My Lord!",
+    )
+
+    ruling = await rule_on_objection(context, objection)
+    logger.info(
+        "Ruled on a stated objection on ground %s: %s", ground.id, ruling.ruling
+    )
+    return {"isObjection": True, **await ruling_payload(objection, ruling)}
 
 
 def _empty(note: str) -> dict:

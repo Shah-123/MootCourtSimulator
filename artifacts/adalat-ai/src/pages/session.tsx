@@ -34,7 +34,10 @@ import {
   SessionStatus,
   TurnSpeaker,
 } from "@workspace/api-client-react";
-import type { CourtReasoningStep } from "@workspace/api-client-react";
+import type {
+  CourtReasoningStep,
+  TurnProvenance,
+} from "@workspace/api-client-react";
 import { ChevronRight, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ApiErrorState, getErrorMessage } from "@/components/api-state";
@@ -54,6 +57,13 @@ interface ParsedTurn {
   ruling: "SUSTAINED" | "OVERRULED" | null;
   text: string;
   reasoning: CourtReasoningStep[] | null;
+  /**
+   * What the utterance actually leant on, read off the record rather than
+   * re-derived from the transcript. Null for the student's own words and for
+   * anything recorded before provenance was persisted, which is why the rail
+   * below still falls back to the citation parsed out of the prefix.
+   */
+  provenance: TurnProvenance | null;
 }
 
 function parseTurn(turn: {
@@ -61,8 +71,10 @@ function parseTurn(turn: {
   transcript: string;
   witnessName?: string | null;
   reasoning?: CourtReasoningStep[] | null;
+  provenance?: TurnProvenance | null;
 }): ParsedTurn {
   const reasoning = turn.reasoning?.length ? turn.reasoning : null;
+  const provenance = turn.provenance ?? null;
   const objection = turn.transcript.match(/^\[OBJECTION:\s*(.*?)\]\s*(.*)$/s);
   if (objection) {
     const [ground, citation] = objection[1].split("—").map((s) => s.trim());
@@ -74,6 +86,7 @@ function parseTurn(turn: {
       ruling: null,
       text: objection[2] ?? "",
       reasoning,
+      provenance,
     };
   }
 
@@ -89,6 +102,7 @@ function parseTurn(turn: {
       ruling: ruling[1] as "SUSTAINED" | "OVERRULED",
       text: ruling[2] ?? "",
       reasoning,
+      provenance,
     };
   }
 
@@ -101,6 +115,7 @@ function parseTurn(turn: {
       ruling: null,
       text: turn.transcript,
       reasoning,
+      provenance,
     };
   }
   if (turn.speaker === TurnSpeaker.judge) {
@@ -112,6 +127,7 @@ function parseTurn(turn: {
       ruling: null,
       text: turn.transcript,
       reasoning,
+      provenance,
     };
   }
   if (turn.speaker === TurnSpeaker.opposing_counsel) {
@@ -123,6 +139,7 @@ function parseTurn(turn: {
       ruling: null,
       text: turn.transcript,
       reasoning,
+      provenance,
     };
   }
   return {
@@ -133,6 +150,7 @@ function parseTurn(turn: {
     ruling: null,
     text: turn.transcript,
     reasoning,
+    provenance,
   };
 }
 
@@ -474,6 +492,13 @@ export default function SessionPage({ id }: { id: string }) {
  * one still under review reads Unverified in stamp red, even where both come
  * from the same Act — which is exactly what a student needs to see before
  * repeating any of it in a real courtroom.
+ *
+ * The rail reads the provenance persisted with the turn where there is any.
+ * Before that was stored it could only re-derive a single citation from the
+ * `[OBJECTION: …]` prefix, so a reload silently dropped every provision the
+ * bench and the witness had relied on, and dropped the "not in corpus" mark
+ * altogether — the record went quiet at exactly the point it had most to say.
+ * Turns written before the column existed still take that older path.
  */
 function RecordEntry({
   index,
@@ -487,6 +512,8 @@ function RecordEntry({
   const isVerified = turn.citation
     ? verifiedCitations.has(turn.citation.trim())
     : false;
+  const grounded = turn.provenance?.grounded ?? [];
+  const fabricated = turn.provenance?.fabricated ?? [];
 
   return (
     <li
@@ -549,29 +576,69 @@ function RecordEntry({
             looks: an unverified provision says so beside the words that
             leant on it, every time. */}
         <div className="flex flex-row flex-wrap items-baseline gap-x-2 gap-y-1 lg:flex-col lg:items-end">
-          {turn.citation && (
-            <>
-              <span className="font-mono text-xs text-foreground/80">
-                {turn.citation}
-              </span>
-              <span
-                className={cn(
-                  "apparatus",
-                  isVerified ? "text-seal" : "text-stamp",
-                )}
-                title={
-                  isVerified
-                    ? "Diffed word-for-word against its official source."
-                    : "This provision's text has not been checked against pakistancode.gov.pk. Do not quote it as authoritative."
-                }
-              >
-                {isVerified ? "✓ Verified" : "⚠ Unverified"}
-              </span>
-            </>
-          )}
+          {grounded.length > 0
+            ? grounded.map((provision) => (
+                <ProvenanceMark
+                  key={provision.citation}
+                  citation={provision.citation}
+                  verified={provision.verified}
+                  heading={provision.heading}
+                />
+              ))
+            : turn.citation && (
+                <ProvenanceMark
+                  citation={turn.citation}
+                  verified={isVerified}
+                />
+              )}
+
+          {/* A citation the corpus does not recognise at all. Distinct from an
+              unverified one: that provision exists and its wording is still
+              being confirmed, this one was never in the statute book. */}
+          {fabricated.map((citation) => (
+            <span
+              key={citation}
+              className="apparatus text-stamp"
+              title={`Not found in the statute corpus: ${citation}`}
+            >
+              ⚠ not in corpus: {citation}
+            </span>
+          ))}
         </div>
       </div>
     </li>
+  );
+}
+
+/** One provision in the rail, with the corpus's own flag on it. */
+function ProvenanceMark({
+  citation,
+  verified,
+  heading,
+}: {
+  citation: string;
+  verified: boolean;
+  heading?: string;
+}) {
+  return (
+    <>
+      <span
+        className="font-mono text-xs text-foreground/80"
+        title={heading || undefined}
+      >
+        {citation}
+      </span>
+      <span
+        className={cn("apparatus", verified ? "text-seal" : "text-stamp")}
+        title={
+          verified
+            ? "Diffed word-for-word against its official source."
+            : "This provision's text has not been checked against pakistancode.gov.pk. Do not quote it as authoritative."
+        }
+      >
+        {verified ? "✓ Verified" : "⚠ Unverified"}
+      </span>
+    </>
   );
 }
 

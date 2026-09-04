@@ -46,6 +46,7 @@ export * from './statuteCitation';
 export * from './studentSide';
 export * from './turn';
 export * from './turnCitationAudit';
+export * from './turnProvenance';
 export * from './turnSpeaker';
 export * from './verdict';
 export * from './voiceTurnInput';
