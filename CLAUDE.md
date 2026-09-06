@@ -279,13 +279,15 @@ The deadline is real and the finished subsystems are already strong. Therefore:
   `pnpm-lock.yaml`, or `data/statutes/*.json` (corpus edits are the user's
   verification work, not yours).
 - Propose improvements outside the current task in one line; implement them only
-  when asked or when they are genuinely low-risk and in-scope.
+  when asked or when they are genuinely low-risk and in-scope. **A proposal that
+  outgrows one line belongs in §7**, which holds the bar a new feature has to
+  clear and the standing backlog.
 - Do not stop at the first thing that runs — but do stop when the remaining
   changes would only be taste.
 
 ---
 
-## 6. Current state (as of 2026-08-04)
+## 6. Current state (as of 2026-09-04)
 
 **Done and verified:** statute corpus + hybrid retrieval (BM25 + dense, RRF
 k=60, LLM reranker); grounded case / objection / verdict generation; two-tier
@@ -376,6 +378,11 @@ to the old prefix-parsed citation.
   `pnpm run eval:redteam` puts 36 attacks through the courtroom and the verdict
   scorer and 0 land, because opposing counsel objects to injected instructions
   as irrelevant. Build the guard when an attack lands, and add the attack first.
+  **Quote that figure with its scope.** All 30 courtroom attacks are staged with
+  a witness on the stand, so every one enters at `objection_screen` — the node
+  the result is credited to. An opening or a closing has no witness up, and
+  `_route_entry` sends it straight to `bench_presides`, so the path that skips
+  the defence has never been attacked (§7 B6).
 - **Corpus verification — done, 53 of 53** (2026-08-20). Art. 199 was diffed
   clean against `data/statutes/administrator9d8e2ecc414c6d3371ac41114b61a2c4.pdf`, which turned out to be a post-Twenty-seventh-Amendment
   (2025) print, not merely post-26th. The same run caught **Art. 10** as stale —
@@ -390,7 +397,174 @@ to the old prefix-parsed citation.
 
 ---
 
-## 7. Environment
+## 7. Adding a feature
+
+The finished subsystems are strong enough that the tempting failure mode has
+changed: not shipping something broken, but shipping something that works and
+proves nothing. This section is the filter.
+
+### The bar a proposal has to clear
+
+Four questions, answered before any code is written. The second is the one that
+gets skipped.
+
+1. **Which criterion does it serve** — defensible, or honest about the law? If
+   neither, it is taste, and §5 already says not to ship it.
+2. **What number does it move, and which harness prints that number?** If no
+   existing eval measures it, **the eval is part of the feature and is written
+   first** — the same rule §6 states for the injection guard: build the guard
+   when an attack lands, and add the attack first. A feature whose only evidence
+   is that it runs is indistinguishable from one that does not work.
+3. **Does it break an invariant in §1?** A vector index, a second schema
+   definition, a prompt in Express, an unbounded loop — stop and say so rather
+   than negotiating with the invariant.
+4. **Can it be seen or heard in the ten minutes a viva gives you?** A feature
+   nobody witnesses competes for build time with one that is audible. This does
+   not veto invisible work; it ranks it.
+
+### Where a feature goes
+
+§1 stated constructively, so the boundary does not have to be rediscovered.
+
+| What you are adding | Where it lives | The gate it owes |
+| --- | --- | --- |
+| Reasoning, a prompt, a model call | `artifacts/ai-service/app/`, exposed under `app/routers/`, reached from Express via `src/lib/ai-service.ts` | `pnpm run eval` |
+| An agent or a graph node | `app/agents/`, wired in `graph.py` with its loop bound stated in code | `pnpm run eval:courtroom --runs 3` |
+| A transport type | `lib/api-spec/openapi.yaml`, then codegen — never the generated files | `pnpm run typecheck` |
+| Persisted state | `lib/db/src/schema/*.ts` + `pnpm run db:push`; Python reads it with raw SQL | `pnpm run typecheck` |
+| A measurement | `artifacts/ai-service/eval/`, recorded through `eval/tracking.py`, calling the functions the app calls | the eval itself; three runs if it is on §3's noisy list |
+| Anything a student sees | `artifacts/adalat-ai/src/`, same-origin `/api/*` only | `pnpm run build` |
+| Voice transport | `artifacts/api-server/src/lib/voice.ts` | not verifiable here — say so (§4) |
+
+### The backlog
+
+**§6's pending list comes first.** A finished subsystem beats a started one, and
+two of those items are the only unheard links in the demo. Everything below is a
+candidate, not a commitment. Each states the sentence it would let you say to
+the panel and the number that would have to back it.
+
+**A. Cheap, and each closes a gap that is currently visible**
+
+1. **Record which print verified each provision, and re-diff on demand.**
+   §2 says a provision verified against a superseded print is not verified, and
+   Art. 10 proved that is not hypothetical. `scripts/verify-statutes.py` puts the
+   corpus and an official text side by side and deliberately never writes the
+   flag — that judgement is a human's and should stay one. What is missing is
+   the other half: nothing records *which* source was diffed (the Constitution's
+   `sourceUrl` is still the 2012 NA print while the verification was done against
+   the 2025 one), and nothing re-checks. Add a per-provision `verifiedAgainst`
+   beside `sourceUrl` and a non-interactive mode that re-diffs the whole corpus
+   against the recorded prints. Number: 53/53 re-diff clean, and a deliberate
+   one-word edit fails the run. The cheapest item here that serves criterion 2,
+   and it retires the stale-`sourceUrl` note in §6.
+2. **Cost per session, in the app.** `app/telemetry.py` already counts every
+   call; the figure just never leaves the harness. Persist it per turn, roll it
+   up on the record. Number: the session total must agree with the harness's
+   $0.0095/turn within rounding — if it does not, one of the two is wrong, and
+   finding out which is itself the result.
+3. **CI on the cheap gates.** `typecheck`, `build` and `ruff` on every push.
+   Not `pnpm run eval` — that spends real money per run, so put it on a nightly
+   or a label and print the spend. State that trade out loud rather than
+   implying the full gate is free.
+4. **Export the record of proceedings.** The provenance rail, the ⚠ marks and
+   the reasoning traces exist on screen and die with the tab. A PDF the student
+   keeps is the honesty machinery in a form that outlives the demo. No NLP
+   number — rank it as polish, after the unheard audio links are closed.
+
+**B. Genuine NLP/RAG extensions — this is where the marks are**
+
+5. **A judgment corpus beside the statutes.** The largest extension available.
+   Moot court in Pakistan runs on PLD/SCMR judgments and the system knows 53
+   statutory provisions and no case law. It is a different retrieval problem,
+   not more of the same one: a judgment is thousands of words where a provision
+   is dozens, forcing a chunking decision the statute corpus never posed; its
+   citation form (`PLD 2019 SC 675`) needs its own resolver in
+   `app/rag/citations.py`; and it puts hundreds of paragraphs of competing prose
+   in front of a fused ranker currently reading hit@1 1.00 against 53
+   candidates. **The number that matters is not the new corpus's hit@1 — it is
+   whether statute hit@1 holds at 1.00 once judgments compete.** Report both.
+   The honesty consequence is a feature rather than a cost: judgments enter
+   unverified, so the ⚠ badge and the `[UNVERIFIED TEXT …]` marker stop being
+   dormant and start firing in the demo — exactly what §2 built them for.
+6. **Widen the red team along the axis it has never tested.** 0/36 is a real
+   number that measures one path. All 30 courtroom attacks run with a witness on
+   the stand (25 `witness_examination`, 5 `cross_examination`, `activeWitness`
+   set on every one), so all 30 enter at `objection_screen` — the node the
+   result is credited to. `_route_entry` in `app/agents/graph.py` only routes
+   there when a witness is up: **in an opening or a closing the utterance goes
+   straight to `bench_presides`, and the defence that catches these 30 is not on
+   that path at all.** Write those attacks first. Also untested: an injection
+   carried in the *case brief* rather than in speech, and roman-Urdu or
+   code-switched phrasing the English set cannot express. Either one lands — and
+   §6's rule applies, build the guard, report before and after — or "0 of N
+   including openings, closings and brief-borne attacks" is a materially stronger
+   sentence than the one you have now. Both outcomes are results, which makes
+   this the safest item on the list.
+7. **Per-call tracing.** §6's remaining LLMOps gap. Latency and cost are metered
+   per call but not joined to a session, a turn and a node, so no ruling can be
+   opened and shown as three ReAct rounds with a cost attached. Number: p50/p95
+   per node, and the share of turn cost the objection cascade actually saves —
+   the harness reports $0.0020 silent against $0.0153 objected, but nothing
+   attributes that split to the node that caused it.
+8. **Coaching replay, scored against a golden set that already exists.** After
+   the verdict, replay the record and show, per exchange, the objection the
+   student could have raised and the provision it rests on — generated through
+   the same corpus-constrained ground catalogue as opposing counsel's, so it
+   cannot invent a rule. It is measurable on day one at no labelling cost:
+   `eval/datasets/objection_scenarios.json` holds 32 labelled scenarios, so the
+   metric is whether the coach names the labelled ground. Of everything here
+   this is the one that makes the project something a student opens twice.
+
+**C. Larger, each with a stated cost**
+
+9. **A bench that asks its own questions.** The judge presides and rules; a
+   bench that interrupts counsel with a question of its own is a third genuine
+   agent behaviour rather than a fourth prompt. Needs a new bounded loop (§1:
+   the bound goes in the code) and a new labelled set — the courtroom eval
+   measures objections, not interruptions. Cost the labelling before starting.
+10. **Code-switched speech.** Students argue in English and Urdu in one
+    sentence; the system assumes one language. `whisper-1` handles Urdu — the
+    harder half is keeping citations and rulings in English when the question
+    was mixed. Number: WER on a small recorded set, and whether objection recall
+    holds at 1.00 on code-switched restatements of the existing 32 scenarios.
+    Honest limit: recording that set needs a microphone, so it cannot be
+    produced in the agent environment (§4).
+11. **Bias the next case toward the ground the student keeps missing.** The
+    dashboard already aggregates per-student scores and every objection carries
+    its ground, so the data exists. Ranked last for one reason: proving it works
+    needs a cohort practising over weeks, which the calendar does not contain.
+    Build it if a cohort exists; do not claim it improves learning from one
+    student's sessions.
+
+### Do not build these
+
+Each is already decided, or costs more than it returns.
+
+- **A vector index, a `vector` column, or an external vector store.** §1. At 53
+  provisions — and at a few thousand judgment chunks — the exact scan is both
+  the faster answer and the exact-recall one.
+- **SQLAlchemy, Alembic, or any second schema definition.** §1. The loud query
+  error on drift is the design.
+- **A model call in Express.** The last two left on 2026-09-04. A third would
+  undo the cleanest architectural claim the project has.
+- **Fine-tuning on the corpus.** 53 provisions is orders of magnitude too little,
+  and worse, a fine-tuned model cannot tell you which provision it read — it
+  destroys the provenance chain the audit and §2 are built on. Retrieval is the
+  point.
+- **A confidence percentage beside a citation.** The only trust signal that
+  exists is the corpus's own per-provision `verified` flag. A model score
+  presented as certainty is an invented number, which is what §3 exists to
+  prevent.
+- **A second surface that quotes the corpus** — a "chat with Pakistani law"
+  panel or similar. It bypasses the courtroom's audit path, competes with the
+  courtroom for demo minutes, and creates a way to quote statute with none of
+  §2's machinery attached.
+- **Any flag, setting or "clean output" mode that hides the ⚠ badge or the
+  `[UNVERIFIED TEXT …]` marker.** §2. Refuse that part and explain why.
+
+---
+
+## 8. Environment
 
 pnpm workspace · Node 24 · Python 3.12+ · PostgreSQL with `pg_trgm` · a **single
 `.env` at the repo root** read by all three services (`app/config.py` resolves it
@@ -407,7 +581,7 @@ Generate one with
 
 ---
 
-## 8. Completion gate
+## 9. Completion gate
 
 A task is done when all of these hold:
 
@@ -417,6 +591,8 @@ A task is done when all of these hold:
   including regressions.
 - If retrieval, prompts, agents, or scoring changed: `pnpm run eval` was re-run
   and the delta stated.
+- If the change was a new feature: it cleared §7's bar, and the eval that
+  measures it exists, was run, and its number is quoted — a new eval included.
 - The affected doc (`docs/agents.md`, `docs/retrieval.md`, `docs/evaluation.md`,
   or the README **Status** section) reflects the new behaviour.
 - What could not be verified here — anything touching audio — is called out
