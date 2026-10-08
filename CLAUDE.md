@@ -38,14 +38,15 @@ dishonest product. If a task seems to require breaking one, stop and say so.
   `src/lib/ai-service.ts` for anything requiring a model.
 - **The browser never talks to the Python service.** Same-origin `/api/*` only.
   OpenAI credentials exist in the API and AI services, never in the web app.
-- **There is no exception left.** Express builds no prompt and makes no model
-  call of its own. The last two moved out: case generation to
-  `POST /cases/generate`, and the manually-raised objection ruling to
-  `POST /courtroom/objection` (2026-09-04) — `routes/sessions.ts` now hands the
-  ground and the record to the same ReAct bench that rules on an agent's
-  objection, and persists the trace it returns. Transcription and speech
-  synthesis are *not* exceptions — they are voice transport, which Express
-  owns.
+- **There is no longer an exception.** Every route reaches a model through
+  `src/lib/ai-service.ts`. The manually-raised objection ruling was the last
+  one: it built a prompt and called the model inside Express, and now delegates
+  to `POST /objections/rule` (`app/routers/courtroom.py` → `app/objections.py`),
+  which routes it into the *same* `rule_on_objection` the graph uses rather
+  than porting the old prompt across. Case generation moved earlier, to
+  `POST /cases/generate`. Transcription and speech synthesis are *not*
+  exceptions — they are voice transport, which Express owns, which is why
+  `lib/voice.ts` still holds an OpenAI client.
 
 ### Schema ownership
 
@@ -221,6 +222,11 @@ are still where the detail lives. `docs/poster.html` is the single graded slide.
 
 Run what applies; do not claim a gate you skipped.
 
+`.github/workflows/checks.yml` runs the first two on every push, plus `ruff`
+and a check that the generated API types still match `openapi.yaml`. It runs
+**no eval**. The model-facing gates below are therefore yours alone, and a
+green tick in CI is not evidence for any of them.
+
 ```bash
 pnpm run typecheck                    # all libs, apps, scripts
 pnpm run build                        # typecheck + production bundles
@@ -285,7 +291,7 @@ The deadline is real and the finished subsystems are already strong. Therefore:
 
 ---
 
-## 6. Current state (as of 2026-08-04)
+## 6. Current state (as of 2026-09-02)
 
 **Done and verified:** statute corpus + hybrid retrieval (BM25 + dense, RRF
 k=60, LLM reranker); grounded case / objection / verdict generation; two-tier
@@ -321,8 +327,79 @@ column, so an existing database needs `pnpm run db:push` before the app will
 serve a session.** Turns written before it read `provenance: null` and fall back
 to the old prefix-parsed citation.
 
+**Done, not yet measured — the proceeding-type model.** A case carries a
+`proceedingType`, and it decides the phases a session runs through, who answers
+inside a phase, and whether evidentiary objections apply at all. `trial` is the
+courtroom as it always was. `writ` is an Article 199 petition heard on the
+record: opening → submissions → bench questions → closing, no witness box, and
+**no objection grounds at all**, because all seven the corpus backs are
+evidentiary examination grounds. A writ therefore never runs the objection
+screen and never bills for it — not by a special case in the graph, but because
+`list_objection_grounds` returns an empty catalogue and `screen_for_objection`
+already returned early on one.
+
+Ownership is split so the halves cannot contradict each other: Express owns
+phase *order* (`PROCEEDING_PHASES` in `lib/courtroom.ts`, served to the client
+as `SessionDetail.phases`) because advancing a phase is session bookkeeping;
+the AI service owns who speaks *within* a phase and which grounds apply
+(`app/proceedings.py`). They name the same phases and answer different
+questions about them. `AgentContext.active_witness` returns `None` wherever the
+proceeding has no witness box, whatever the request says, so a session created
+before this existed cannot seat someone on a stand that is not there.
+
+This is what made **Constitutional** draftable. The corpus already held Arts. 4,
+9, 25 and 199, so the citations were always sound; what was missing was a phase
+model, not statute. The Constitutional retrieval palette was narrowed to
+`CONST_1973` in the same change — QSO evidence articles were harmless while the
+area was unreachable and stop being harmless the moment cases are drafted from
+that palette, since a writ cannot hear a ground resting on rules of oral
+examination. The other six areas remain ungenerable and there the missing thing
+genuinely *is* the corpus; a proceeding will not fix them.
+
+**Verified statically only:** `pnpm run build`, `ruff` (no new errors), and a
+no-model routing test showing trial routing unchanged and a writ reaching
+neither `objection_screen` nor `witness_testify` even with a witness forced onto
+the request. **`pnpm run eval` and `pnpm run eval:courtroom` have not been run
+against it** — no reachable Postgres on the machine that wrote it — and §3
+requires both, because the retrieval palette changed and every agent prompt
+gained a line naming the proceeding. Treat this as implemented and *unmeasured*
+until that gate has actually run; do not quote it as evidence of anything.
+
 **Pending — this is where effort belongs:**
 
+- **Measure the proceeding-type model.** `pnpm run db:push` (adds
+  `cases.proceeding_type`, defaulted `trial`, so every existing case is
+  unaffected), `pnpm run db:seed` (flips *Asma Bibi v. Board of Revenue* to a
+  writ and empties the two witnesses it could never call — it was described as
+  an Article 199 petition from the day it was seeded and was still being run as
+  a trial), then `pnpm run eval` and `pnpm run eval:courtroom`. The latter now
+  ends with six writ scenarios from `eval/datasets/writ_scenarios.json`. They
+  are **structural, not judged**: a writ engages no ground and has no witness
+  box, so "counsel did not object" is an invariant rather than a decision that
+  could be defensibly different, and any non-zero count is a routing bug. Two
+  are adversarial — a blatantly leading question that draws a sustained
+  objection in the trial suite, and a stale `activeWitness` on the request.
+  `docs/evaluation.md` carries that section with **no baseline recorded**, which
+  is deliberate. Fill it from a real run, not from expectation.
+- **Ruff's line-length rule is unenforced, and now visibly so.** Turning CI on
+  found 66 findings: one real defect (an f-string with no placeholders, fixed)
+  and 65 `E501`s, almost all inside prompt bodies where the line *is* the
+  prompt, so reflowing it changes what ships to the model. CI blocks on
+  everything except `E501` and prints the `E501` count on every run rather than
+  silencing it in `pyproject.toml`, where it would stop being visible. §4 still
+  states line-length 88, so the two disagree: either reflow the prompts that
+  can be reflowed and enforce it, or record in §4 that Python line length is
+  not enforced and why. Leaving it printed forever is the one option that is
+  not a decision.
+- **The ⚠ badge's lookup is narrower than it looks.** `verifiedCitations` in
+  `pages/session.tsx` is built from the seven provisions behind the objection
+  grounds, so the bench citing PPC s.302 already renders ⚠ today even though the
+  corpus has it verified — over-warning, but still wrong, and it devalues the
+  mark §2 exists to protect. Turns already carry per-provision `verified` inside
+  `grounded`; that is the correct source. Found while scoping the ground
+  catalogue by proceeding, which would have made the fault universal in a writ —
+  that path was fixed by keeping the badge's lookup unfiltered, this one
+  predates it and is untouched.
 - **Hear a witness answer.** The objection → ruling half of the sequence is
   confirmed audible (above). Put a *proper* question to a witness — one that
   draws no objection — and confirm the testimony is spoken in its own voice.
@@ -334,15 +411,18 @@ to the old prefix-parsed citation.
   looking right.
 - **Transcription latency (4.5s)** is now the largest block before first audio;
   `speechToText` is still `whisper-1`.
-- **Reasoning in Express — done, no route left (2026-09-04).** The
-  manually-raised objection ruling moved to `POST /courtroom/objection`
-  (`app/routers/courtroom.py` → `run_stated_objection` in
-  `app/agents/interjection.py`), which reuses `rule_on_objection` — so a student
-  objection now draws the same three-round ReAct bench as an agent's, and the
-  trace is persisted on the turn instead of discarded. Case generation moved
-  earlier to `POST /cases/generate`. **Not yet done for this route: the ruling
-  is still not spoken.** It returns as JSON to a dialog, where every graph
-  ruling is streamed and synthesized.
+- **Reasoning in Express — done, no route left.** The manually-raised objection
+  ruling moved to `POST /objections/rule` (`app/objections.py`), which routes it
+  into the same `rule_on_objection` the graph uses rather than porting the old
+  prompt across. The bench is told *who* objected (`ObjectorVoice` in
+  `app/agents/judge.py`) and is shown the words objected to rather than the
+  objection itself — both load-bearing, because whether a question is leading
+  turns on whose witness is on the stand. Case generation moved earlier to
+  `POST /cases/generate`. **Not done for this route: the ruling is not spoken.**
+  It returns as JSON to a dialog, where every graph ruling is streamed and
+  synthesized. **No eval covers it either** — `courtroom_eval` and `redteam_eval`
+  both drive `run_turn`, the autonomous path — so a hand-raised objection is a
+  manual check against a live stack.
 - **LLMOps (#7).** Cost and latency are metered per call (`app/telemetry.py`)
   and reported by `eval:courtroom`. Every eval run is now recorded to MLflow
   (`eval/tracking.py` — metrics, the settings and commit that produced them, and
@@ -358,8 +438,16 @@ to the old prefix-parsed citation.
   and offset from the dev-server ports on purpose — `API_PORT` is the Vite dev
   proxy target, so reusing it collided with `pnpm run dev:api`. The cross-encoder
   reranker moved to an opt-in `crossencoder` extra, which is what keeps the AI
-  image at 748 MB rather than ~3 GB. Still missing: per-call tracing, CI, and
-  surfacing cost per *session* in the app rather than only in the harness.
+  image at 748 MB rather than ~3 GB. **CI has landed**
+  (`.github/workflows/checks.yml`): every push runs the contract-drift check,
+  `typecheck`, `build` and `ruff`. It runs **no eval**, deliberately — each
+  needs a key and a database and bills per run, and §3 asks for a *delta
+  against a recorded baseline*, which is a judgement CI cannot make, so a green
+  tick there says nothing about retrieval, agents or scoring. The drift check
+  is the part worth knowing about: it regenerates from `openapi.yaml` and fails
+  on a dirty tree, which is what turns "never hand-edit the generated files"
+  from a request into an enforced invariant. Still missing: per-call tracing,
+  and surfacing cost per *session* in the app rather than only in the harness.
 - **Security & contract fixes (#8).** User scoping is **done**: `users` (scrypt
   password hashing), a stateless signed session cookie, and rate limiting keyed
   on both email and IP (`lib/auth.ts`, `lib/rate-limit.ts`). `requireUser` is

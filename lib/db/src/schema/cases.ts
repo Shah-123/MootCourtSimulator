@@ -68,6 +68,16 @@ export const casesTable = pgTable("cases", {
   title: text("title").notNull(),
   areaOfLaw: text("area_of_law").notNull(),
   difficulty: text("difficulty").notNull(),
+  /**
+   * How the matter is heard, which decides the phases a session on this case
+   * runs through and whether evidentiary objections apply at all.
+   *
+   * Defaulted to "trial" rather than made nullable: every case that predates
+   * proceeding types is a trial, and that is a fact about them, not missing
+   * information. A null here would force every reader to invent the same
+   * fallback, and one of them would eventually invent a different one.
+   */
+  proceedingType: text("proceeding_type").notNull().default("trial"),
   summary: text("summary").notNull(),
   applicableLaws: text("applicable_laws").notNull(),
   petitionerName: text("petitioner_name").notNull(),

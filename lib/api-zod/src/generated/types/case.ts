@@ -9,6 +9,7 @@ import type { AreaOfLaw } from './areaOfLaw';
 import type { CaseBriefDetail } from './caseBriefDetail';
 import type { CaseSource } from './caseSource';
 import type { Difficulty } from './difficulty';
+import type { ProceedingType } from './proceedingType';
 import type { StatuteCitation } from './statuteCitation';
 import type { Witness } from './witness';
 
@@ -17,6 +18,7 @@ export interface Case {
   title: string;
   areaOfLaw: AreaOfLaw;
   difficulty: Difficulty;
+  proceedingType: ProceedingType;
   summary: string;
   applicableLaws: string;
   petitionerName: string;

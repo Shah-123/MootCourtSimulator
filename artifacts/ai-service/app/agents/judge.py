@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import logging
+from dataclasses import dataclass
 
 from app.agents.llm import text_completion
 from app.agents.state import (
@@ -36,7 +37,43 @@ logger = logging.getLogger(__name__)
 # bounds the latency and token cost of a single ruling.
 MAX_TOOL_ROUNDS = 3
 
-_RULING_SYSTEM = """You are a learned judge of a Pakistani High Court presiding over a moot court. Opposing counsel has raised an objection. Rule on it.
+@dataclass(frozen=True, slots=True)
+class ObjectorVoice:
+    """How the bench is told who objected, and to what.
+
+    Not a cosmetic detail. Whether a question is leading depends on whose
+    witness is on the stand, so a bench told the wrong party raised the
+    objection can rule the wrong way on identical words. The graph raises
+    objections as opposing counsel; the student raises them by hand from the
+    web app, against something already said on the record.
+    """
+
+    #: Substituted into the system prompt.
+    system_line: str
+    #: Introduces the words being objected to.
+    utterance_intro: str
+    #: Names the objector in the user block.
+    objects_line: str
+
+
+OPPOSING_COUNSEL = ObjectorVoice(
+    system_line="Opposing counsel",
+    utterance_intro="The student asked the witness",
+    objects_line="OPPOSING COUNSEL OBJECTS",
+)
+
+STUDENT = ObjectorVoice(
+    # Trailing comma: the system prompt reads "{objector} has raised an
+    # objection", and without it the clause runs on.
+    system_line="The student, appearing as counsel,",
+    # The student objects to what someone else has just said, not to their own
+    # question, so the words in front of the bench are somebody else's.
+    utterance_intro="The words objected to, as spoken on the record",
+    objects_line="THE STUDENT, APPEARING AS COUNSEL, OBJECTS",
+)
+
+
+_RULING_SYSTEM = """You are a learned judge of a Pakistani High Court presiding over a moot court. {objector} has raised an objection. Rule on it.
 
 You have a tool, search_statute, that reads the statute corpus. Use it to read the provision the objection rests on together with its neighbouring provisions before you rule — an evidentiary objection is decided by what the law actually says, not by how it sounds. Call the tool as many times as you need (up to a few), then rule.
 
@@ -44,6 +81,13 @@ Rule only on statutory text you have actually read (the provision handed to you 
 
 When you are ready to rule, stop calling tools and respond with strict JSON only:
 {"ruling": "sustained" or "overruled", "explanation": "2-3 sentences in clear, simple, easy-to-understand English citing the provisions relied on", "impact": "one simple sentence instructing counsel or the witness in plain English", "citation": "the primary provision citation string"}"""
+
+
+def _ruling_system(voice: ObjectorVoice) -> str:
+    # `.replace` rather than `.format`: the prompt ends in a JSON schema, and
+    # formatting would require doubling every brace in it. A doubled brace in a
+    # prompt is a bug the next edit reintroduces.
+    return _RULING_SYSTEM.replace("{objector}", voice.system_line)
 
 
 def _dedupe(provisions: list[GroundedProvision]) -> list[GroundedProvision]:
@@ -58,17 +102,26 @@ def _dedupe(provisions: list[GroundedProvision]) -> list[GroundedProvision]:
 
 
 async def rule_on_objection(
-    context: AgentContext, objection: Objection
+    context: AgentContext,
+    objection: Objection,
+    objector: ObjectorVoice = OPPOSING_COUNSEL,
 ) -> JudgeRuling:
-    """Runs the judge's ReAct loop and returns a grounded ruling."""
+    """Runs the judge's ReAct loop and returns a grounded ruling.
+
+    `objector` defaults to opposing counsel, which is the graph's caller and
+    every caller that predates the student raising objections by hand. One
+    bench rules on both: a second ruling prompt for hand-raised objections is
+    exactly the drift `run_turn` being defined in terms of `run_turn_stream`
+    exists to prevent.
+    """
     settings = get_settings()
     client = get_client()
 
     user = (
         f"{context.case_context()}\n\n"
         f"Recent exchange:\n{context.working_memory_text()}\n\n"
-        f'The student asked the witness:\n"{context.utterance}"\n\n'
-        f"OPPOSING COUNSEL OBJECTS on the ground of: {objection.label}\n"
+        f'{objector.utterance_intro}:\n"{context.utterance}"\n\n'
+        f"{objector.objects_line} on the ground of: {objection.label}\n"
         f"They say: \"{objection.interjection}\"\n\n"
         "THE PROVISION THIS GROUND RESTS ON:\n"
         f"{objection.citation} — {objection.heading}\n{objection.content}\n\n"
@@ -76,7 +129,7 @@ async def rule_on_objection(
     )
 
     messages: list[dict] = [
-        {"role": "system", "content": _RULING_SYSTEM},
+        {"role": "system", "content": _ruling_system(objector)},
         {"role": "user", "content": user},
     ]
 

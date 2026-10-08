@@ -42,6 +42,7 @@ from app.telemetry import track
 from eval.tracking import tracked_run
 
 GOLD_PATH = Path(__file__).parent / "datasets" / "objection_scenarios.json"
+WRIT_PATH = Path(__file__).parent / "datasets" / "writ_scenarios.json"
 
 # No session exists for a scenario, and none should: load_session_memory returns
 # empty memory for an unknown id, which is exactly the blank slate we want.
@@ -185,6 +186,176 @@ async def evaluate_courtroom(
             return await _run_scenario(case, scenario)
 
     return list(await asyncio.gather(*(bounded(s) for s in scenarios)))
+
+
+# ---------------------------------------------------------------------------
+# Proceeding routing: a writ heard on the record
+# ---------------------------------------------------------------------------
+
+
+@dataclass(slots=True)
+class ProceedingResult:
+    """One turn in a proceeding that engages no objection ground.
+
+    Scored structurally rather than judged. Everything above measures a
+    decision the model made and could defensibly have made differently; this
+    measures the graph. A writ has no witness box and no applicable ground, so
+    "counsel did not object" is not an opinion — it is an invariant, and a
+    violation is a routing bug rather than a bad call.
+    """
+
+    id: str
+    phase: str
+    expected_speaker: str
+
+    speaker: str | None = None
+    objected: bool = False
+    witness_answered: bool = False
+    seconds: float = 0.0
+    calls: int = 0
+    cost: float = 0.0
+    error: str | None = None
+
+    @property
+    def speaker_correct(self) -> bool:
+        return self.speaker == self.expected_speaker
+
+    @property
+    def clean(self) -> bool:
+        """No objection screened, and nobody seated in a box that does not exist."""
+        return not self.objected and not self.witness_answered
+
+
+async def _run_proceeding_scenario(case: dict, scenario: dict) -> ProceedingResult:
+    result = ProceedingResult(
+        id=scenario["id"],
+        phase=scenario["phase"],
+        expected_speaker=scenario["expectedSpeaker"],
+    )
+
+    request = TurnRequest.model_validate(
+        {
+            "sessionId": SYNTHETIC_SESSION_ID,
+            "phase": scenario["phase"],
+            "studentSide": case["studentSide"],
+            # Passed through exactly as given, including the stale witness the
+            # fixture carries. Sanitising it here would test the harness.
+            "activeWitness": scenario["activeWitness"],
+            "case": case,
+            "utterance": scenario["utterance"],
+            "workingMemory": [],
+        }
+    )
+
+    started = time.perf_counter()
+    with track() as ledger:
+        try:
+            turn = await run_turn(request)
+        except Exception as err:  # a failed scenario is data, not a crash
+            result.error = f"{type(err).__name__}: {err}"
+            result.seconds = time.perf_counter() - started
+            return result
+    result.seconds = time.perf_counter() - started
+    result.calls = ledger.calls
+    result.cost = ledger.cost
+
+    # Same reasoning as the objection suite: the agents swallow model failures,
+    # so an outage would read here as a perfectly quiet courtroom. It is not.
+    if ledger.calls == 0:
+        result.error = "no model calls recorded — API failure, not a decision"
+
+    result.objected = turn.get("objection") is not None
+    result.speaker = turn.get("primarySpeaker")
+    for event in turn.get("events", []):
+        if event.get("kind") == "testimony":
+            result.witness_answered = True
+
+    return result
+
+
+async def evaluate_proceeding(
+    limit: int | None = None, concurrency: int = 1
+) -> list[ProceedingResult]:
+    gold = json.loads(WRIT_PATH.read_text(encoding="utf-8"))
+    case = gold["case"]
+    scenarios = gold["scenarios"][:limit] if limit else gold["scenarios"]
+
+    if concurrency <= 1:
+        return [await _run_proceeding_scenario(case, s) for s in scenarios]
+
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def bounded(scenario: dict) -> ProceedingResult:
+        async with semaphore:
+            return await _run_proceeding_scenario(case, scenario)
+
+    return list(await asyncio.gather(*(bounded(s) for s in scenarios)))
+
+
+def print_proceeding_report(results: list[ProceedingResult]) -> None:
+    scored = [r for r in results if r.error is None]
+
+    print()
+    print(f"=== Writ routing · {len(results)} scenarios ===")
+    print()
+    print(f"  {'scenario':<26} {'speaker':<20} {'objected':>8} {'witness':>8} {'s':>5}")
+    for r in results:
+        if r.error:
+            print(f"  {r.id:<26} ERROR  {r.error[:48]}")
+            continue
+        speaker = r.speaker or "-"
+        if not r.speaker_correct:
+            speaker += " (!)"
+        print(
+            f"  {r.id:<26} {speaker:<20} "
+            f"{('YES' if r.objected else 'no'):>8} "
+            f"{('YES' if r.witness_answered else 'no'):>8} {r.seconds:>5.1f}"
+        )
+
+    if not scored:
+        print("  no scenarios completed")
+        return
+
+    objections = sum(1 for r in scored if r.objected)
+    testimony = sum(1 for r in scored if r.witness_answered)
+    speakers = sum(1 for r in scored if r.speaker_correct)
+
+    print()
+    print("  invariants (any non-zero is a routing bug, not a model opinion)")
+    print(f"    objections raised where no ground applies:   {objections}")
+    print(f"    testimony given where there is no stand:     {testimony}")
+    print(
+        f"    responding agent correct: {speakers}/{len(scored)} "
+        f"({speakers / len(scored) * 100:.0f}%)"
+    )
+    wrong = [r for r in scored if not r.speaker_correct]
+    if wrong:
+        detail = ", ".join(
+            f"{r.id}: expected {r.expected_speaker}, got {r.speaker}" for r in wrong
+        )
+        print(f"    mismatches: {detail}")
+
+    total_cost = sum(r.cost for r in scored)
+    print(
+        f"  cost: ${total_cost:.4f} over {len(scored)} turns "
+        f"= ${total_cost / len(scored):.4f}/turn, "
+        f"{sum(r.calls for r in scored)} calls"
+    )
+
+
+def summarise_proceeding(results: list[ProceedingResult]) -> dict[str, float]:
+    scored = [r for r in results if r.error is None]
+    if not scored:
+        return {
+            "writ_speaker": 0.0,
+            "writ_objection_leaks": 0.0,
+            "writ_testimony_leaks": 0.0,
+        }
+    return {
+        "writ_speaker": sum(1 for r in scored if r.speaker_correct) / len(scored),
+        "writ_objection_leaks": float(sum(1 for r in scored if r.objected)),
+        "writ_testimony_leaks": float(sum(1 for r in scored if r.witness_answered)),
+    }
 
 
 def _counts(results: list[ScenarioResult]) -> tuple[int, int, int, int]:
@@ -394,6 +565,11 @@ async def main() -> None:
         default=1,
         help="scenarios in flight; >1 is faster but makes the timings meaningless",
     )
+    parser.add_argument(
+        "--no-writ",
+        action="store_true",
+        help="skip the writ routing checks (trial scenarios only)",
+    )
     args = parser.parse_args()
 
     if args.concurrency > 1:
@@ -422,6 +598,15 @@ async def main() -> None:
             if args.runs > 1:
                 print_stability(summaries)
 
+            # Run once regardless of --runs. These are invariants rather than
+            # measurements that move between runs, so repeating them buys
+            # nothing but spend.
+            writ_metrics: dict[str, float] = {}
+            if not args.no_writ:
+                writ_results = await evaluate_proceeding(args.limit, args.concurrency)
+                print_proceeding_report(writ_results)
+                writ_metrics = summarise_proceeding(writ_results)
+
             # The mean across runs, not the last one: ruling accuracy moves
             # between identical runs and `CLAUDE.md` requires the mean be what
             # is quoted. Recording anything else would put a number in the
@@ -432,6 +617,7 @@ async def main() -> None:
             }
             if costs:
                 recorded["cost_per_turn_usd"] = statistics.mean(costs)
+            recorded.update(writ_metrics)
             recorder.metrics("courtroom", recorded)
     finally:
         await db.close_pool()

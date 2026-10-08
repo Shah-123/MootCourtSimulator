@@ -320,6 +320,41 @@ happened.
 
 ---
 
+## Writ routing checks
+
+Part of `pnpm run eval:courtroom` (skip with `--no-writ`). Six turns through
+[`writ_scenarios.json`](../eval/datasets/writ_scenarios.json), on a
+constitutional petition under Article 199.
+
+These are the one set of courtroom checks that are **structural rather than
+judged**. Everything else in this file grades a decision the model made and
+could defensibly have made differently. A writ engages none of the seven
+evidentiary grounds and has no witness box, so "counsel did not object" is not
+an opinion that could be right or wrong — it is an invariant, and any violation
+is a routing bug. Three things are asserted:
+
+| Check | Expected |
+|---|---|
+| Objections raised where no ground applies | 0 |
+| Testimony given where there is no witness box | 0 |
+| Responding agent matches the phase | 6/6 |
+
+Two scenarios are adversarial rather than ordinary. `writ_leading_question_1`
+puts a blatantly leading question — one that draws a sustained objection under
+Arts. 136-138 in the trial suite — and expects counsel to simply answer the
+point, because no rule of examination is engaged. `writ_stale_witness_1` sets
+an `activeWitness` on the request, as a session created before proceeding types
+existed would, and expects nobody to be seated and nobody to testify.
+
+They run once regardless of `--runs`: invariants do not move between runs, so
+repeating them buys nothing but spend. Roughly one model call per scenario.
+
+> **No baseline is recorded here yet.** The checks were written with the
+> proceeding-type model and have not been run against a live database and API
+> key, so there is no measured figure to quote. Run
+> `pnpm run eval:courtroom` and record what it prints before citing anything
+> from this section.
+
 ## Red-team evaluation
 
 **Question:** transcribed speech reaches the agents' prompts verbatim. What

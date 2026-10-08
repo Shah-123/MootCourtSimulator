@@ -211,6 +211,11 @@ const sampleCases = [
     title: "Asma Bibi v. Board of Revenue",
     areaOfLaw: "Constitutional",
     difficulty: "Advanced",
+    // The summary called this a writ petition from the day it was seeded. It
+    // was still run as a trial, because a trial was the only thing the
+    // courtroom could run — so it offered examination-in-chief and
+    // cross-examination of witnesses in a matter heard on affidavits.
+    proceedingType: "writ",
     summary: "Constitutional writ petition under Article 199 challenging executive revenue circulars that deny female heirs equal mutation rights in ancestral agricultural land under Article 25.",
     // Dropped the West Pakistan Land Revenue Act 1967 s. 42 — not in the corpus,
     // and invisible to the extractor for want of an alias. Art. 4 replaces it as
@@ -224,18 +229,11 @@ const sampleCases = [
     petitionerRole: "Petitioner",
     respondentName: "Board of Revenue Punjab",
     respondentRole: "Respondent",
-    witnesses: JSON.stringify([
-      {
-        name: "Dr. Farooq Ahmad",
-        role: "Islamic Jurisprudence Scholar",
-        statement: "Muslim Personal Law strictly protects fixed Quranic shares for female heirs without executive delay."
-      },
-      {
-        name: "Salim Tehsildar",
-        role: "Tehsildar kasur",
-        statement: "The mutation was deferred pending male co-sharers NOC per provincial administrative instructions."
-      }
-    ]),
+    // Emptied with the proceeding. A writ has no witness box, so a scholar's
+    // opinion and a Tehsildar's account are not testimony here — they belong
+    // in the affidavits and the counter-affidavit. Leaving them would put
+    // names in every agent prompt that no phase can ever call.
+    witnesses: JSON.stringify([]),
     source: "library"
   },
   // The demo case. It existed only as a generated row in one local database,
@@ -450,6 +448,9 @@ async function seed() {
       verifyBriefCitations(corpus, c.title, c.brief);
       return {
         ...c,
+        // Every case seeded before proceeding types existed is a trial, and
+        // that is a fact about them rather than a missing value.
+        proceedingType: c.proceedingType ?? "trial",
         citations,
         brief: buildBrief(c.brief),
         // Identical to how routes/cases.ts renders a generated case, so a
@@ -467,9 +468,9 @@ async function seed() {
       const existing = await client.query("SELECT id FROM cases WHERE title = $1", [c.title]);
       if (existing.rows.length === 0) {
         await client.query(
-          `INSERT INTO cases (title, area_of_law, difficulty, summary, applicable_laws, petitioner_name, petitioner_role, respondent_name, respondent_role, witnesses, citations, brief, source)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12::jsonb, $13)`,
-          [c.title, c.areaOfLaw, c.difficulty, c.summary, c.applicableLaws, c.petitionerName, c.petitionerRole, c.respondentName, c.respondentRole, c.witnesses, JSON.stringify(c.citations), c.brief === null ? null : JSON.stringify(c.brief), c.source]
+          `INSERT INTO cases (title, area_of_law, difficulty, proceeding_type, summary, applicable_laws, petitioner_name, petitioner_role, respondent_name, respondent_role, witnesses, citations, brief, source)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12::jsonb, $13::jsonb, $14)`,
+          [c.title, c.areaOfLaw, c.difficulty, c.proceedingType, c.summary, c.applicableLaws, c.petitionerName, c.petitionerRole, c.respondentName, c.respondentRole, c.witnesses, JSON.stringify(c.citations), c.brief === null ? null : JSON.stringify(c.brief), c.source]
         );
         console.log(`Seeded case: ${c.title}`);
       } else {
@@ -479,9 +480,9 @@ async function seed() {
         // written here. Student-facing fields the seed owns are refreshed;
         // sessions reference the case by id and are untouched.
         await client.query(
-          `UPDATE cases SET applicable_laws = $2, citations = $3::jsonb, witnesses = $4::jsonb, summary = $5, brief = $6::jsonb
+          `UPDATE cases SET applicable_laws = $2, citations = $3::jsonb, witnesses = $4::jsonb, summary = $5, brief = $6::jsonb, proceeding_type = $7
            WHERE title = $1 AND source = 'library'`,
-          [c.title, c.applicableLaws, JSON.stringify(c.citations), c.witnesses, c.summary, c.brief === null ? null : JSON.stringify(c.brief)]
+          [c.title, c.applicableLaws, JSON.stringify(c.citations), c.witnesses, c.summary, c.brief === null ? null : JSON.stringify(c.brief), c.proceedingType]
         );
         console.log(`Refreshed case: ${c.title} (${c.citations.length} provisions)`);
       }

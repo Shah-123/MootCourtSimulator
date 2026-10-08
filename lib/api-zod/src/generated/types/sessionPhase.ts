@@ -6,6 +6,19 @@
  * OpenAPI spec version: 0.1.0
  */
 
+/**
+ * One stage of a hearing. Which stages apply, and the order they run in,
+ * belong to the proceeding — see ProceedingType — so this enum is the
+ * union of every stage any proceeding uses and its order carries no
+ * meaning. A session's own sequence is served as SessionDetail.phases.
+ * Listing this enum was how the web app used to build its progress strip,
+ * and that stopped being correct the moment a second proceeding existed.
+ *
+ * witness_examination and cross_examination belong to a trial.
+ * submissions and bench_questions belong to a writ heard on the record:
+ * counsel answers the petition, then the bench puts its questions to
+ * counsel. opening, closing and verdict are common to both.
+ */
 export type SessionPhase = typeof SessionPhase[keyof typeof SessionPhase];
 
 
@@ -13,6 +26,8 @@ export const SessionPhase = {
   opening: 'opening',
   witness_examination: 'witness_examination',
   cross_examination: 'cross_examination',
+  submissions: 'submissions',
+  bench_questions: 'bench_questions',
   closing: 'closing',
   verdict: 'verdict',
 } as const;

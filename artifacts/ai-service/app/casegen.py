@@ -24,6 +24,7 @@ from typing import Any
 
 from app.config import get_settings
 from app.grounding import retrieve_area_palette
+from app.proceedings import TRIAL, WRIT, profile_for
 from app.rag.citations import CitationStatus, audit_citations
 from app.rag.embeddings import get_client
 from app.rag.retrieval import format_sections_for_prompt
@@ -45,6 +46,19 @@ CAP_ITEM = 400
 # A brief that survives the citation audit with fewer than two grounds is not a
 # pleading worth arguing against, so it is rejected rather than persisted thin.
 MIN_GROUNDS = 2
+
+# Which proceeding an area is drafted as.
+#
+# Not a free choice on the request: a criminal prosecution is tried and an
+# Article 199 petition is not, and letting a student pick would produce a
+# criminal trial with no witness box or a writ with a cross-examination. The
+# OpenAPI contract gates the areas (DraftableAreaOfLaw); this decides how each
+# one is heard. An area absent here is drafted as a trial, which is what every
+# case that predates proceeding types already is.
+AREA_PROCEEDING: dict[str, str] = {
+    "Criminal": TRIAL,
+    "Constitutional": WRIT,
+}
 
 # Server-assigned so labels stay contiguous after a ground is dropped by the
 # audit: a brief that jumps from "A." to "C." tells the student a ground was
@@ -114,10 +128,55 @@ def _witnesses(raw: object) -> list[dict[str, str]]:
     return witnesses
 
 
+# What the drafter is told about the proceeding, and whether a witness list is
+# asked for at all.
+#
+# A writ drafted with three eyewitnesses is not a slightly imperfect writ — it
+# is a trial wearing the wrong name, and the student would open a case whose
+# witnesses can never be called. The instruction and the JSON shape therefore
+# move together.
+_POSTURE = {
+    TRIAL: (
+        "This matter is tried. Evidence is led orally through witnesses, so "
+        "build in contested facts that testimony can decide."
+    ),
+    WRIT: (
+        "This matter is a constitutional petition under Article 199 of the "
+        "Constitution of Pakistan, heard on the record. There is no witness "
+        "box: the facts come from affidavits and annexures, and the matter is "
+        "argued on the law. Draft no witnesses and do not build the dispute "
+        "around a contested eyewitness account. It must turn on the legality "
+        "of the impugned action and the rights invoked."
+    ),
+}
+
+_WITNESS_SHAPE = (
+    '  "witnesses": array of 2-{max_witnesses} objects '
+    '{{ "name": string, "role": string (relation to case, e.g. "Eyewitness"), '
+    '"statement": string (2-3 sentences of their testimony) }}'
+)
+
+
 def _build_prompt(
-    area_of_law: str, difficulty: str, palette_block: str, allowed: list[str]
+    area_of_law: str,
+    difficulty: str,
+    proceeding_type: str,
+    palette_block: str,
+    allowed: list[str],
 ) -> str:
+    profile = profile_for(proceeding_type)
+    posture = _POSTURE.get(proceeding_type, _POSTURE[TRIAL])
+    # The prayer trails the JSON body for a writ, so the comma that used to
+    # separate it from "witnesses" has to go with it.
+    prayer_line = f'  "prayer": array of 2-{MAX_PRAYER} strings'
+    if profile.has_witness_box:
+        prayer_line += ",\n" + _WITNESS_SHAPE.format(
+            max_witnesses=MAX_WITNESSES
+        )
+
     return f"""Generate a realistic, original moot-court practice case under Pakistani law for a final-year law student. Area of law: {area_of_law}. Difficulty: {difficulty}.
+
+{posture}
 
 You have been given the full text of the provisions available to you below. Build the dispute so that it genuinely turns on some of them.
 
@@ -147,8 +206,7 @@ Respond with strict JSON only, matching this shape:
   "respondents": array of 1-3 objects {{ "name": string, "role": string (e.g. "Respondent", "Accused", "The State"), "description": string }},
   "facts": array of 4-{MAX_FACTS} strings,
   "grounds": array of {MIN_GROUNDS}-{MAX_GROUNDS} strings,
-  "prayer": array of 2-{MAX_PRAYER} strings,
-  "witnesses": array of 2-{MAX_WITNESSES} objects {{ "name": string, "role": string (relation to case, e.g. "Eyewitness"), "statement": string (2-3 sentences of their testimony) }}
+{prayer_line}
 }}"""
 
 
@@ -186,6 +244,12 @@ async def generate_case(area_of_law: str, difficulty: str) -> dict[str, Any]:
     citation audit — so a bad case is rejected rather than written to the
     database.
     """
+    # How this area is heard decides the shape of the filing, whether witnesses
+    # are drafted at all, and — once the case is stored — which phases a session
+    # on it runs through.
+    proceeding_type = AREA_PROCEEDING.get(area_of_law, TRIAL)
+    profile = profile_for(proceeding_type)
+
     # Retrieve a palette of real provisions first, then constrain generation to
     # it. Without this the model invents plausible-looking section numbers, and a
     # moot-court tool that teaches fabricated citations is worse than useless.
@@ -208,6 +272,7 @@ async def generate_case(area_of_law: str, difficulty: str) -> dict[str, Any]:
                 "content": _build_prompt(
                     area_of_law,
                     difficulty,
+                    proceeding_type,
                     format_sections_for_prompt(palette),
                     allowed,
                 ),
@@ -294,7 +359,14 @@ async def generate_case(area_of_law: str, difficulty: str) -> dict[str, Any]:
         "petitionerRole": lead_petitioner["role"],
         "respondentName": lead_respondent["name"],
         "respondentRole": lead_respondent["role"],
-        "witnesses": _witnesses(raw.get("witnesses")),
+        "proceedingType": proceeding_type,
+        # Dropped rather than trusted for a proceeding with no witness box. The
+        # prompt already says not to draft any, but a witness list that reached
+        # the database would show a "call witness" control the route then
+        # refuses, and the agents would be handed testimony nobody can give.
+        "witnesses": (
+            _witnesses(raw.get("witnesses")) if profile.has_witness_box else []
+        ),
         "citations": citations,
         "brief": {
             "court": _clean(raw.get("court"), 160) or None,

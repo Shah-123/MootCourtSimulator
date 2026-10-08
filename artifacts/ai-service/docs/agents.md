@@ -53,15 +53,49 @@ The live diagram (kept in sync with the compiled graph) is served at
 ### Edges (the supervisor)
 
 Routing is pure functions over the shared context, not another model call — the
-phase and the presence of a witness fully determine who may act:
+proceeding, the phase and the presence of a witness fully determine who may act:
 
 - **Entry** — a witness on the stand routes to `objection_screen`; otherwise
-  straight to the primary responder (`bench_presides`, or `counsel_argues` in a
-  cross with no witness).
+  straight to the primary responder.
 - **After the objection screen** — an objection routes to `judge_ruling`;
   silence routes to the primary responder.
 - **After a ruling** — *sustained* strikes the question and ends the turn (the
   witness never answers); *overruled* lets the witness answer.
+
+### The proceeding decides, not the phase name
+
+Who the primary responder is used to be a hardcoded test for
+`cross_examination`. That was the trial's rule written as if it were the
+courtroom's, and it is the reason seven of the eight areas of law were
+undraftable: the simulator could only run a matter that has a witness box.
+
+A case now carries a **proceeding type**, and
+[`proceedings.py`](../app/proceedings.py) says what that implies:
+
+| | `trial` | `writ` |
+|---|---|---|
+| Phases | opening → examination-in-chief → cross-examination → closing | opening → submissions → bench questions → closing |
+| Witness box | yes | **no** — heard on affidavits and the record |
+| Primary responder | bench, except counsel in cross | bench, except counsel in submissions |
+| Objection grounds | all seven | **none** |
+
+The split of ownership is deliberate. *Advancing* a phase is session
+bookkeeping, so Express owns the order (`PROCEEDING_PHASES` in
+`lib/courtroom.ts`) and serves each session its own sequence as
+`SessionDetail.phases`. *Who speaks inside* a phase is reasoning, so this
+service owns that. The two halves name the same phases and answer different
+questions about them, so neither can drift by contradicting the other.
+
+Two consequences worth stating plainly:
+
+- **`AgentContext.active_witness` returns `None` in a proceeding with no
+  witness box**, whatever the request says. A session created before proceeding
+  types existed can still carry a stale `activeWitness`, and it must not seat
+  someone on a stand that does not exist. Enforced at the one property every
+  agent reads rather than at each reader.
+- **A writ never runs the objection screen and never bills for it.** Not by a
+  special case in the graph, but because `list_objection_grounds` returns an
+  empty catalogue and `screen_for_objection` already returned early on one.
 
 ## Why the judge is a ReAct agent
 
@@ -95,6 +129,31 @@ $0.0153 → $0.0168 (+10%), silent turns unchanged at $0.0020, and objection
 precision/recall/F1/specificity all still 1.00 with ruling accuracy 100%. See
 [`docs/evaluation.md`](evaluation.md).
 
+### One bench, whoever objects
+
+The student can also raise an objection by hand, from the web app. That used to
+be ruled on by a *second* judge: `routes/sessions.ts` built its own prompt, was
+handed a block of retrieved provisions, and answered in one shot with no trace.
+Two benches, ruling on the same kind of objection by different methods, with
+nothing forcing them to agree — the drift that defining `run_turn` in terms of
+`run_turn_stream` exists to prevent, in a place nobody had looked.
+
+`POST /objections/rule` ([`objections.py`](../app/objections.py)) routes it into
+the same `rule_on_objection`, so a hand-raised objection now gets what the
+autonomous one always had: statute read with `search_statute` before the ruling,
+and a recorded trace showing it.
+
+The bench is told **who** objected. That is not a courtesy: whether a question
+is leading turns on whose witness is on the stand, so a bench told the wrong
+party raised the objection can rule the wrong way on identical words. The
+`ObjectorVoice` in [`judge.py`](../app/agents/judge.py) carries the difference,
+including the fact that a student objects to somebody else's words already on
+the record, where opposing counsel objects to the question the student just put.
+
+Only the ruling comes back over the wire. The student's own objection is the
+student's turn — `CourtEvent.speaker` cannot express "student" — so Express
+records that itself, exactly as it records the utterance in a courtroom turn.
+
 ## Why opposing counsel is the autonomous actor
 
 Its defining behaviour is the objection nobody asked for. After each question
@@ -114,20 +173,35 @@ point and how much has to be worked out before the bench hears it.
 | --- | --- | --- | --- |
 | Opposing counsel, unprompted | `objection_screen` node | — | Counsel picks it from the catalogue |
 | The student, interrupting aloud | `POST /courtroom/interject` | Yes — was that even an objection? | Inferred, and refused if none fits |
-| The student, from the objection dialog | `POST /courtroom/objection` | No — nothing to infer | Named in the request |
+| The student, from the objection dialog | `POST /objections/rule` | No — nothing to infer | Named in the request, scoped to the proceeding |
 
 All three end in `rule_on_objection` ([`judge.py`](../app/agents/judge.py)): the
 same three-round ReAct loop, the same `search_statute` tool, the same recorded
-trace. The two student-raised paths also share `ruling_payload`
-([`interjection.py`](../app/agents/interjection.py)), so a ruling reaches the
-record identically however counsel got to their feet.
+trace. What changes between them is the `ObjectorVoice` the bench is given.
 
-The dialog path is the newest (4 September 2026) and is why the Express server
-now holds no prompt of its own. It used to build one there and call the model
-directly, which made it the only ruling in the system with no trace to show:
-the record could say *sustained* but not what the bench had read. It also could
-not object on more than the last five lines of transcript, where the graph
-reads the whole phase plus the cross-phase recollection.
+That is not a courtesy. Whether a question is leading depends on whose witness
+is on the stand, so a bench told the wrong party objected can rule the wrong way
+on identical words. `OPPOSING_COUNSEL` and `STUDENT` substitute three clauses
+each, and the student variant also changes what is put in front of the bench:
+counsel objects to the question the student just asked, while a student objects
+to somebody else's words already on the record, so
+[`objections.py`](../app/objections.py) sends the last recorded turn as the
+utterance and the student's statement as the objection.
+
+The dialog path is why the Express server holds no prompt of its own. It used to
+build one there and call the model directly — a *second bench*, handed a block of
+retrieved provisions and answering in one shot with no trace, while this one
+reads the corpus itself. Two judges ruling on the same kind of objection by
+different methods, with nothing forcing them to agree.
+
+The catalogue is filtered twice, and the two filters reject for different
+reasons. A ground whose provision is missing from the corpus is one we *cannot
+cite*, so it is not offered. A ground the proceeding does not engage is one that
+*does not exist here at all* — every one of the seven is an evidentiary
+examination ground, drawn from the Qanun-e-Shahadat and s.162 CrPC, so a writ
+heard on the record returns an empty list. That empty list is the correct
+answer, not a degraded one, and the web app removes the Object control rather
+than offering a button the bench would have to refuse.
 
 ## What the agents know about the case
 

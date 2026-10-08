@@ -286,13 +286,36 @@ courtroom agents read it — the bench presses the student on grounds they actua
 pleaded. Every ground's citations are audited against the corpus before the case
 is stored, and a ground resting on a provision that does not exist is dropped
 rather than taught. Generation itself moved out of the Express route and behind
-the AI service. As of 4 September 2026 the manually-raised objection ruling has
-followed it, so **no prompt or model call is left on the Node side at all**: a
-student's own objection now draws the same ReAct bench as an agent's, reading
-the ground's provision and its neighbours before it rules, and the trace is
-persisted with the ruling rather than discarded. That ruling is still returned
-as JSON to the objection dialog rather than spoken, which every graph ruling
-is.
+the AI service, and so has the last one after it: an objection the student
+raises by hand is now ruled on by the **same bench** that rules on the ones
+opposing counsel raises autonomously — reading statute with a tool before it
+rules, and recording the trace. Express holds no prompt and makes no model call
+on any route; the only OpenAI client left on the Node side is the one that
+turns speech into text and back, which is transport, not reasoning. The bench is told who
+raised the objection and is shown the words being objected to, not the objection
+itself — a question is leading or not depending on whose witness is on the stand.
+That ruling is still returned as JSON to the dialog rather than spoken, which
+every ruling the graph produces is.
+
+A case also carries a **proceeding type**, which decides how it is heard. A
+`trial` runs opening → examination-in-chief → cross-examination → closing, with
+a witness box and all seven objection grounds in play. A `writ` — a
+constitutional petition under Article 199 — runs opening → submissions → bench
+questions → closing, has no witness box, and offers **no objection grounds at
+all**, because every ground the corpus backs is an evidentiary examination
+ground. That is the proceeding modelled honestly rather than a gap to fill: a
+simulator that let counsel cry hearsay during a writ argument would be teaching
+a rule that does not exist.
+
+This is what made **Constitutional** draftable. The corpus already held Arts. 4,
+9, 25 and 199, so the citations were always sound; what was missing was a phase
+model, not statute. The other six areas of law remain ungenerable, and there the
+missing thing genuinely *is* the corpus — Contract and Corporate resolve out of
+the Penal Code, and Civil, Family, Property and Tort sweep a corpus that is
+45/53 criminal and evidence provisions. Generation would still audit at 100%,
+because the audit's ground truth is that same corpus, which is exactly why
+passing the audit is not evidence of coverage. Adding a proceeding will not fix
+those; ingesting the governing instrument will.
 
 The web app presents a session as a **record of proceedings** rather than a chat
 log: numbered paragraphs, a ruled speaker column, and a provenance rail carrying

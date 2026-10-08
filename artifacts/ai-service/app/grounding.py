@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.proceedings import TRIAL, profile_for
 from app.rag.index import get_index
 from app.rag.retrieval import RetrievedSection, search_statutes
 
@@ -18,16 +19,16 @@ from app.rag.retrieval import RetrievedSection, search_statutes
 # runs across everything and returns weaker matches, which the post-generation
 # verification step catches.
 #
-# Seven of these are currently unreachable: `DraftableAreaOfLaw` in the OpenAPI
-# contract gates generation to Criminal alone. The weak-match fallback below
-# turned out not to be enough on its own — a Contract case answered out of
-# s.415/s.489-F PPC still passes the citation audit, because the audit's ground
-# truth is this same corpus, so nothing downstream flags it.
+# Six of these are still unreachable: `DraftableAreaOfLaw` in the OpenAPI
+# contract gates generation to Criminal and Constitutional. The weak-match
+# fallback below turned out not to be enough on its own — a Contract case
+# answered out of s.415/s.489-F PPC still passes the citation audit, because
+# the audit's ground truth is this same corpus, so nothing downstream flags it.
 #
-# Constitutional is unreachable for a different reason and its query is still
-# right: the corpus grounds it fine, but an Article 199 writ is heard on the
-# record, and the courtroom only models a trial with a witness box. Restoring
-# it needs a phase model, not a statute.
+# Constitutional was in that list until the writ proceeding existed, and it was
+# there for a different reason: the corpus grounded it fine, but the courtroom
+# only modelled a trial with a witness box. That was a phase problem, not a
+# statute problem, and the phase model fixed it.
 #
 # All eight are kept rather than deleted: each becomes correct again once its
 # area is served, and the query is the part that takes thought.
@@ -37,10 +38,17 @@ AREA_SEED_QUERIES: dict[str, tuple[str, list[str] | None]] = {
         "investigation arrest bail evidence of witnesses",
         ["PPC_1860", "CRPC_1898", "QSO_1984"],
     ),
+    # Narrowed to the Constitution when the area became draftable. QSO was in
+    # this filter while the area was unreachable and harmless there; the moment
+    # cases are actually drafted from this palette it stops being harmless,
+    # because a writ is decided on the record and grounds resting on rules of
+    # oral examination are grounds the proceeding cannot hear. The corpus holds
+    # eight Articles — the fundamental-rights block plus Art. 199 — and a writ
+    # turns on those.
     "Constitutional": (
         "fundamental rights due process equality before law writ jurisdiction "
         "of High Court liberty fair trial",
-        ["CONST_1973", "QSO_1984"],
+        ["CONST_1973"],
     ),
     "Civil": (
         "civil rights and obligations proof of documents burden of proof "
@@ -197,11 +205,20 @@ class ObjectionGround:
         }
 
 
-async def list_objection_grounds() -> list[ObjectionGround]:
-    """Returns only grounds whose backing provision is present in the corpus.
+async def list_objection_grounds(
+    proceeding_type: str = TRIAL,
+) -> list[ObjectionGround]:
+    """Returns the grounds available in this proceeding, backed by the corpus.
 
-    A ground we cannot cite is a ground we do not offer.
+    Two filters, and they reject for different reasons. A ground whose
+    provision is missing from the corpus is one we cannot cite, so we do not
+    offer it. A ground the proceeding does not engage is one that does not
+    exist here at all — every ground below is an evidentiary examination
+    ground, so a writ heard on the record returns an empty list. That empty
+    list is the correct answer, not a degraded one.
     """
+    profile = profile_for(proceeding_type)
+    allowed = profile.objection_ground_ids
     index = await get_index()
     by_key = {
         f"{section.statute_code}:{section.section_number}": section
@@ -210,6 +227,8 @@ async def list_objection_grounds() -> list[ObjectionGround]:
 
     grounds: list[ObjectionGround] = []
     for definition in GROUND_DEFINITIONS:
+        if allowed is not None and definition.id not in allowed:
+            continue
         section = by_key.get(f"{definition.statute_code}:{definition.section_number}")
         if section is None:
             continue
@@ -227,8 +246,15 @@ async def list_objection_grounds() -> list[ObjectionGround]:
     return grounds
 
 
-async def find_objection_ground(ground_id: str) -> ObjectionGround | None:
-    for ground in await list_objection_grounds():
+async def find_objection_ground(
+    ground_id: str, proceeding_type: str = TRIAL
+) -> ObjectionGround | None:
+    """Resolves one ground *within a proceeding*.
+
+    Scoped rather than global so a ground the UI is not offering cannot be
+    raised by posting its id directly at the manual-objection route.
+    """
+    for ground in await list_objection_grounds(proceeding_type):
         if ground.id == ground_id:
             return ground
     return None
