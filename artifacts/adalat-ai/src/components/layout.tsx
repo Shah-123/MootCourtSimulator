@@ -5,6 +5,7 @@ import { Moon, Sun, LogOut } from "lucide-react";
 import { useLogOut } from "@workspace/api-client-react";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { cn } from "@/lib/utils";
+import { CourtLogoMark } from "./logo";
 
 /**
  * The masthead of a printed cause list, not an application chrome bar.
@@ -117,15 +118,18 @@ export function Layout({ children }: { children: ReactNode }) {
               matters underneath it. */}
           <Link
             href="/"
-            className="group flex shrink-0 flex-col rounded-sm transition-opacity hover:opacity-80"
+            className="group flex shrink-0 items-center gap-3 rounded-sm transition-opacity hover:opacity-85"
           >
-            {/* The name of the court is not a thing that wraps. */}
-            <span className="whitespace-nowrap font-serif text-[1.375rem] font-normal leading-none tracking-[-0.02em] text-foreground">
-              CourtSimulator
-            </span>
-            <span className="apparatus mt-1 text-muted-foreground">
-              Pakistan superior judiciary
-            </span>
+            <CourtLogoMark size={34} />
+            <div className="flex flex-col">
+              {/* The name of the court is not a thing that wraps. */}
+              <span className="whitespace-nowrap font-serif text-[1.375rem] font-normal leading-none tracking-[-0.02em] text-foreground">
+                CourtSimulator
+              </span>
+              <span className="apparatus mt-1 text-muted-foreground">
+                Pakistan superior judiciary
+              </span>
+            </div>
           </Link>
 
           <div className="flex items-center gap-1">

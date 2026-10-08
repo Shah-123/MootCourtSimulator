@@ -1,3 +1,89 @@
 <svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-<rect width="180" height="180" rx="36" fill="#FF3C00"/>
+  <defs>
+    <!-- Background Gradient: Deep Imperial Judicial Slate -->
+    <radialGradient id="courtBg" cx="50%" cy="30%" r="70%">
+      <stop offset="0%" stop-color="#2D1B4E" />
+      <stop offset="70%" stop-color="#140E26" />
+      <stop offset="100%" stop-color="#0A0714" />
+    </radialGradient>
+
+    <!-- Metallic Gold Gradient for Scales & Trim -->
+    <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FCE588" />
+      <stop offset="35%" stop-color="#D4AF37" />
+      <stop offset="70%" stop-color="#AA820A" />
+      <stop offset="100%" stop-color="#F5D76E" />
+    </linearGradient>
+
+    <!-- Subtle Violet Glow -->
+    <linearGradient id="violetGlow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#9333EA" stop-opacity="0.4" />
+      <stop offset="100%" stop-color="#4C1D95" stop-opacity="0.0" />
+    </linearGradient>
+
+    <!-- Drop Shadow Filter -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#000000" flood-opacity="0.5" />
+    </filter>
+  </defs>
+
+  <!-- Container Squircle / Judicial Plaque -->
+  <rect width="180" height="180" rx="40" fill="url(#courtBg)" />
+  <rect width="176" height="176" x="2" y="2" rx="38" stroke="url(#goldGradient)" stroke-width="2" stroke-opacity="0.4" />
+  <rect width="168" height="168" x="6" y="6" rx="34" stroke="#9333EA" stroke-width="1" stroke-opacity="0.3" />
+
+  <!-- Background Arch Silhouette -->
+  <path d="M 40 152 V 76 A 50 50 0 0 1 140 76 V 152 Z" fill="url(#violetGlow)" />
+  <path d="M 46 150 V 78 A 44 44 0 0 1 134 78 V 150" stroke="url(#goldGradient)" stroke-width="1.2" stroke-opacity="0.25" stroke-dasharray="2 3" />
+
+  <!-- Soundwave / Acoustic Voice Resonance Bars (Behind Center Pillar) -->
+  <g opacity="0.85" filter="url(#shadow)">
+    <!-- Outer wave left -->
+    <rect x="62" y="80" width="3.5" height="24" rx="1.75" fill="url(#goldGradient)" opacity="0.5" />
+    <!-- Mid wave left -->
+    <rect x="70" y="72" width="3.5" height="40" rx="1.75" fill="url(#goldGradient)" opacity="0.75" />
+    <!-- Inner wave left -->
+    <rect x="78" y="65" width="3.5" height="54" rx="1.75" fill="url(#goldGradient)" opacity="0.95" />
+    <!-- Inner wave right -->
+    <rect x="98.5" y="65" width="3.5" height="54" rx="1.75" fill="url(#goldGradient)" opacity="0.95" />
+    <!-- Mid wave right -->
+    <rect x="106.5" y="72" width="3.5" height="40" rx="1.75" fill="url(#goldGradient)" opacity="0.75" />
+    <!-- Outer wave right -->
+    <rect x="114.5" y="80" width="3.5" height="24" rx="1.75" fill="url(#goldGradient)" opacity="0.5" />
+  </g>
+
+  <!-- Central Judicial Pillar / Sceptre -->
+  <!-- Base Pedestal -->
+  <path d="M 72 144 H 108 V 140 C 108 138 105 137 101 137 H 79 C 75 137 72 138 72 140 Z" fill="url(#goldGradient)" filter="url(#shadow)" />
+  <!-- Main Pillar Spine -->
+  <rect x="88" y="48" width="4" height="90" rx="2" fill="url(#goldGradient)" />
+
+  <!-- Finial / Star at Apex -->
+  <path d="M 90 26 L 92.5 33.5 L 100 34 L 94.5 39 L 96.5 46.5 L 90 42.5 L 83.5 46.5 L 85.5 39 L 80 34 L 87.5 33.5 Z" fill="url(#goldGradient)" filter="url(#shadow)" />
+
+  <!-- Scales Crossbeam (Meezan Arch) -->
+  <path d="M 44 68 C 65 62 82 52 90 52 C 98 52 115 62 136 68" stroke="url(#goldGradient)" stroke-width="4" stroke-linecap="round" fill="none" filter="url(#shadow)" />
+  <circle cx="90" cy="52" r="4.5" fill="#140E26" stroke="url(#goldGradient)" stroke-width="2.5" />
+  <circle cx="44" cy="68" r="3" fill="url(#goldGradient)" />
+  <circle cx="136" cy="68" r="3" fill="url(#goldGradient)" />
+
+  <!-- Left Scale Pan & Strings -->
+  <g filter="url(#shadow)">
+    <line x1="44" y1="68" x2="30" y2="108" stroke="url(#goldGradient)" stroke-width="1.5" stroke-opacity="0.8" />
+    <line x1="44" y1="68" x2="58" y2="108" stroke="url(#goldGradient)" stroke-width="1.5" stroke-opacity="0.8" />
+    <!-- Pan Bowl -->
+    <path d="M 26 108 C 26 122 62 122 62 108 Z" fill="url(#goldGradient)" />
+    <!-- Pan Lip -->
+    <line x1="24" y1="108" x2="64" y2="108" stroke="url(#goldGradient)" stroke-width="2" stroke-linecap="round" />
+  </g>
+
+  <!-- Right Scale Pan & Strings -->
+  <g filter="url(#shadow)">
+    <line x1="136" y1="68" x2="122" y2="108" stroke="url(#goldGradient)" stroke-width="1.5" stroke-opacity="0.8" />
+    <line x1="136" y1="68" x2="150" y2="108" stroke="url(#goldGradient)" stroke-width="1.5" stroke-opacity="0.8" />
+    <!-- Pan Bowl -->
+    <path d="M 118 108 C 118 122 154 122 154 108 Z" fill="url(#goldGradient)" />
+    <!-- Pan Lip -->
+    <line x1="116" y1="108" x2="156" y2="108" stroke="url(#goldGradient)" stroke-width="2" stroke-linecap="round" />
+  </g>
 </svg>

@@ -8,6 +8,7 @@
     "dev:ai": "cd artifacts/ai-service && python -m uvicorn app.main:app --port 8000 --reload",
     "dev:all": "pnpm --parallel --filter @workspace/adalat-ai --filter @workspace/api-server run dev",
     "db:push": "pnpm --filter @workspace/db run push",
+    "push:db": "pnpm run db:push",
     "db:seed": "node ./scripts/seed.mjs",
     "statutes:ingest": "node ./scripts/ingest-statutes.mjs",
     "statutes:reindex": "node ./scripts/ingest-statutes.mjs --force",
