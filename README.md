@@ -317,14 +317,26 @@ because the audit's ground truth is that same corpus, which is exactly why
 passing the audit is not evidence of coverage. Adding a proceeding will not fix
 those; ingesting the governing instrument will.
 
-The web app presents a session as a **record of proceedings** rather than a chat
-log: numbered paragraphs, a ruled speaker column, and a provenance rail carrying
+The web app presents a session as a **courtroom** rather than a chat log. The
+screen is the room — the bench at the back under the key light, counsel either
+side of the well, the witness box empty until someone is called — drawn as
+layered 2.5D planes rather than a 3D scene, and every state it shows is derived
+from turns the API already returned or events the voice stream already sends.
+Whoever holds the floor is lit; calling a witness walks a figure into the box;
+a ruling stamps the room in seal green or stamp vermilion. Advancing a stage
+empties the box, because the graph stops routing to a witness at the same
+moment.
+
+Behind it, the **record of proceedings** is unchanged and one keystroke away:
+numbered paragraphs, a ruled speaker column, and a provenance rail carrying
 every provision an agent relied on beside the words it produced. The rail reads
 the corpus's own `verified` flag per provision, so all 53 currently read
 ✓ verified; a provision whose source went stale would read ⚠, and a citation the
 corpus does not recognise is marked too, rather than passing silently. The ⚠ path
 is live and load-bearing even with nothing flagged today — it is what the next
-amendment lands on.
+amendment lands on. The courtroom's subtitle bar renders the same live caption
+component the sidebar used, for the same reason: speech cannot carry a badge, so
+the warning appears beside the words while they are being spoken.
 
 That provenance is **persisted with the turn** (`turns.provenance`) as of
 4 September 2026, not only streamed. Until then it lived for as long as the tab
@@ -333,6 +345,11 @@ reload left the record able to re-derive one citation from the `[OBJECTION: …]
 prefix and nothing else — a ruling showed no provisions at all and the "not in
 corpus" mark disappeared. A record of proceedings that forgets what the bench
 was relying on is not a record.
+
+A student without a working microphone is no longer locked out of arguing.
+`POST /sessions/:id/turn` has existed since the courtroom graph landed and the
+web app had never called it; the chamber's **Address** control does, so a
+written submission reaches the same agents and the same audit as a spoken one.
 
 Note that a case stores its `citations` as a snapshot taken when it was
 generated, so cases drafted before the corpus was verified still show ⚠ against

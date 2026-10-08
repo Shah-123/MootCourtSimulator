@@ -9,9 +9,7 @@ import {
 import { useQueryClient } from "@tanstack/react-query";
 import { getGetSessionQueryKey } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { VoiceControl } from "@/components/voice-control";
 import {
   Dialog,
@@ -32,141 +30,64 @@ import {
 import {
   SessionPhase,
   SessionStatus,
-  TurnSpeaker,
+  type ProceedingType,
 } from "@workspace/api-client-react";
-import type {
-  CourtReasoningStep,
-  TurnProvenance,
-  ProceedingType,
-} from "@workspace/api-client-react";
-import { ChevronRight, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  ChevronRight,
+  FileText,
+  Loader2,
+  Pause,
+  PenLine,
+  Play,
+  ScrollText,
+  UserPlus,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { ApiErrorState, getErrorMessage } from "@/components/api-state";
-import { CaseBriefArgument } from "@/components/case-brief";
 import { CaseName } from "@/components/case-name";
+import { Chamber } from "@/components/courtroom/chamber";
+import { CaseFilePanel } from "@/components/courtroom/case-file-panel";
+import { AddressComposer } from "@/components/courtroom/composer";
+import {
+  EMPTY_LIVE,
+  deriveStage,
+  witnessPhase,
+  type LiveStage,
+} from "@/components/courtroom/stage-state";
+import { SubtitleBar } from "@/components/courtroom/subtitle";
+import { TranscriptPanel } from "@/components/courtroom/transcript-panel";
 import { useToast } from "@/hooks/use-toast";
 import { docket, phaseLabel } from "@/lib/format";
 import { cn } from "@/lib/utils";
-
-type Mark = "objection" | "ruling" | "counsel" | "bench" | "witness";
-
-interface ParsedTurn {
-  mark: Mark;
-  speaker: string;
-  citation: string | null;
-  ground: string | null;
-  ruling: "SUSTAINED" | "OVERRULED" | null;
-  text: string;
-  reasoning: CourtReasoningStep[] | null;
-  /**
-   * What the utterance actually leant on, read off the record rather than
-   * re-derived from the transcript. Null for the student's own words and for
-   * anything recorded before provenance was persisted, which is why the rail
-   * below still falls back to the citation parsed out of the prefix.
-   */
-  provenance: TurnProvenance | null;
-}
-
-function parseTurn(turn: {
-  speaker: string;
-  transcript: string;
-  witnessName?: string | null;
-  reasoning?: CourtReasoningStep[] | null;
-  provenance?: TurnProvenance | null;
-}): ParsedTurn {
-  const reasoning = turn.reasoning?.length ? turn.reasoning : null;
-  const provenance = turn.provenance ?? null;
-  const objection = turn.transcript.match(/^\[OBJECTION:\s*(.*?)\]\s*(.*)$/s);
-  if (objection) {
-    const [ground, citation] = objection[1].split("—").map((s) => s.trim());
-    return {
-      mark: "objection",
-      speaker: "Opposing counsel",
-      citation: citation || null,
-      ground: ground || "Evidentiary objection",
-      ruling: null,
-      text: objection[2] ?? "",
-      reasoning,
-      provenance,
-    };
-  }
-
-  const ruling = turn.transcript.match(
-    /^\[RULING:\s*(SUSTAINED|OVERRULED)\]\s*(.*)$/s,
-  );
-  if (ruling) {
-    return {
-      mark: "ruling",
-      speaker: "The bench",
-      citation: null,
-      ground: null,
-      ruling: ruling[1] as "SUSTAINED" | "OVERRULED",
-      text: ruling[2] ?? "",
-      reasoning,
-      provenance,
-    };
-  }
-
-  if (turn.speaker === TurnSpeaker.student) {
-    return {
-      mark: "counsel",
-      speaker: "You",
-      citation: null,
-      ground: null,
-      ruling: null,
-      text: turn.transcript,
-      reasoning,
-      provenance,
-    };
-  }
-  if (turn.speaker === TurnSpeaker.judge) {
-    return {
-      mark: "bench",
-      speaker: "The bench",
-      citation: null,
-      ground: null,
-      ruling: null,
-      text: turn.transcript,
-      reasoning,
-      provenance,
-    };
-  }
-  if (turn.speaker === TurnSpeaker.opposing_counsel) {
-    return {
-      mark: "counsel",
-      speaker: "Opposing counsel",
-      citation: null,
-      ground: null,
-      ruling: null,
-      text: turn.transcript,
-      reasoning,
-      provenance,
-    };
-  }
-  return {
-    mark: "witness",
-    speaker: turn.witnessName ? `Witness — ${turn.witnessName}` : "Witness",
-    citation: null,
-    ground: null,
-    ruling: null,
-    text: turn.transcript,
-    reasoning,
-    provenance,
-  };
-}
+import "@/components/courtroom/chamber.css";
 
 /**
- * Where the hearing has reached.
+ * The hearing, as a room rather than as a page.
  *
- * Five filled boxes in a grid read as a wizard, which invites a student to
- * click ahead through them; they are stages of a hearing that has to be
- * argued, not steps in a form. Set as a run of stage names with the current
- * one underlined — the same mark the nav and the tab heads use — and the ones
- * already risen from in muted text.
+ * The screen is the courtroom; everything else is an overlay on top of it. That
+ * inverts what this page used to be — a two-column reading layout with the
+ * record on the left and the controls on the right — and the reason is that a
+ * student arguing out loud is not reading. They need to know, at a glance and
+ * while speaking, who has the floor and whether the witness they called is
+ * actually in the box. A transcript answers both questions in prose, several
+ * seconds late. A lit figure answers them immediately.
+ *
+ * Nothing about the hearing itself moved. The same five mutations run
+ * (advance-phase, call-witness, objection, voice-turns, turn), the record is
+ * the same component, and the state the room draws is derived from turns the
+ * API already returned — see `stage-state.ts`.
  */
-function PhaseStrip({ phases, currentIndex }: { phases: string[]; currentIndex: number }) {
+
+/** Where the hearing has reached, as a compact run of stage names. */
+function PhaseStrip({
+  phases,
+  currentIndex,
+}: {
+  phases: string[];
+  currentIndex: number;
+}) {
   return (
-    <ol className="flex flex-wrap items-baseline gap-x-5 gap-y-2 border-t border-rule/60 pt-3">
+    <ol className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
       {phases.map((phase, index) => {
         const isCurrent = index === currentIndex;
         const isPast = index < currentIndex;
@@ -176,7 +97,7 @@ function PhaseStrip({ phases, currentIndex }: { phases: string[]; currentIndex: 
             key={phase}
             aria-current={isCurrent ? "step" : undefined}
             className={cn(
-              "apparatus flex items-baseline gap-1.5 border-b-2 pb-1",
+              "apparatus flex items-baseline gap-1.5 border-b-2 pb-0.5",
               isCurrent
                 ? "border-foreground text-foreground"
                 : "border-transparent",
@@ -193,11 +114,54 @@ function PhaseStrip({ phases, currentIndex }: { phases: string[]; currentIndex: 
   );
 }
 
+/** A control on the dock: an icon over a word, sized for a touch target. */
+function DockButton({
+  icon,
+  label,
+  onClick,
+  disabled,
+  tone,
+  active,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick?: () => void;
+  disabled?: boolean;
+  tone?: "stamp" | "default";
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active}
+      className={cn(
+        "chamber-dock-button",
+        tone === "stamp" && "chamber-dock-button--stamp",
+        active && "chamber-dock-button--active",
+      )}
+    >
+      <span aria-hidden="true">{icon}</span>
+      <span className="chamber-dock-label">{label}</span>
+    </button>
+  );
+}
+
 export default function SessionPage({ id }: { id: string }) {
   const sessionId = parseInt(id, 10);
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
-  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const [live, setLive] = useState<LiveStage>(EMPTY_LIVE);
+  const [panel, setPanel] = useState<"record" | "file" | null>(null);
+  const [composerOpen, setComposerOpen] = useState(false);
+  /**
+   * A recess suspends the 3s poll and the room's ambient motion. It is a view
+   * control and nothing more — the hearing on the server is exactly where it
+   * was — so it is labelled as pausing the *live view* rather than the court.
+   */
+  const [paused, setPaused] = useState(false);
 
   const {
     data: session,
@@ -209,7 +173,7 @@ export default function SessionPage({ id }: { id: string }) {
     query: {
       queryKey: getGetSessionQueryKey(sessionId),
       enabled: Number.isInteger(sessionId) && sessionId > 0,
-      refetchInterval: 3000,
+      refetchInterval: paused ? false : 3000,
     },
   });
 
@@ -229,16 +193,8 @@ export default function SessionPage({ id }: { id: string }) {
   const advancePhase = useAdvanceSessionPhase();
   const { toast } = useToast();
 
-  useEffect(() => {
-    if (scrollRef.current) {
-      const scrollContainer = scrollRef.current.querySelector(
-        "[data-radix-scroll-area-viewport]",
-      );
-      if (scrollContainer) {
-        scrollContainer.scrollTop = scrollContainer.scrollHeight;
-      }
-    }
-  }, [session?.turns.length]);
+  // Stable, so the voice control's reporting effect cannot loop.
+  const handleStageChange = useCallback((next: LiveStage) => setLive(next), []);
 
   useEffect(() => {
     if (session?.status === SessionStatus.completed) {
@@ -319,385 +275,154 @@ export default function SessionPage({ id }: { id: string }) {
   const hasWitnessBox =
     phases.includes(SessionPhase.witness_examination) ||
     phases.includes(SessionPhase.cross_examination);
+  const stage = deriveStage(session, live);
+  const canCallWitness = hasWitnessBox && witnessPhase(session.phase);
+  const nextStageLabel =
+    session.phase === SessionPhase.closing
+      ? "Submit for judgment"
+      : "Next stage";
 
   return (
-    <div className="flex min-h-[calc(100vh-12rem)] flex-col gap-6 pb-4">
-      <header className="border-b border-rule pb-4">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <p className="apparatus flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
-              <span className="tabular-nums">{docket(session.id)}</span>
-              <span aria-hidden="true">·</span>
-              <span>{session.case.areaOfLaw}</span>
-              <span aria-hidden="true">·</span>
-              <span>for the {session.studentSide}</span>
-            </p>
+    <div className="chamber-shell">
+      {/* ---- The head of the cause, over the room --------------------- */}
+      <header className="chamber-hud">
+        <div className="min-w-0">
+          <p className="apparatus flex flex-wrap items-center gap-x-2 gap-y-1 text-muted-foreground">
+            <span className="tabular-nums">{docket(session.id)}</span>
+            <span aria-hidden="true">·</span>
+            <span>{session.case.areaOfLaw}</span>
+            <span aria-hidden="true">·</span>
+            <span>for the {session.studentSide}</span>
+          </p>
 
-            <h1 className="display-sm mt-2">
-              <CaseName title={session.case.title} />
-            </h1>
-
-            <p
-              className="mt-2 truncate font-mono text-xs text-muted-foreground"
-              title={session.case.applicableLaws}
-            >
-              {session.case.applicableLaws}
-            </p>
-          </div>
-
-          <div className="flex shrink-0 flex-wrap items-center gap-2">
-            {/* Hides itself when the proceeding engages no grounds. */}
-            <ObjectionDialog
-              sessionId={sessionId}
-              proceedingType={session.case.proceedingType}
-            />
-
-            {hasWitnessBox &&
-              (session.phase === SessionPhase.witness_examination ||
-                session.phase === SessionPhase.cross_examination) && (
-                <CallWitnessDialog
-                  sessionId={sessionId}
-                  witnesses={session.case.witnesses}
-                />
-              )}
-
-            <Button
-              onClick={handleAdvancePhase}
-              disabled={advancePhase.isPending}
-            >
-              {advancePhase.isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : null}
-              <span>
-                {session.phase === SessionPhase.closing
-                  ? "Submit for judgment"
-                  : "Next stage"}
-              </span>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
+          <h1 className="mt-1 truncate font-serif text-lg leading-tight text-foreground sm:text-xl">
+            <CaseName title={session.case.title} />
+          </h1>
         </div>
 
-        <div className="mt-4">
-          <PhaseStrip phases={phases} currentIndex={currentIndex} />
+        <div className="chamber-hud-right">
+          <div className="hidden xl:block">
+            <PhaseStrip phases={phases} currentIndex={currentIndex} />
+          </div>
+
+          <div className="flex shrink-0 items-center gap-1">
+            <DockButton
+              icon={<FileText className="h-4 w-4" />}
+              label="Case file"
+              active={panel === "file"}
+              onClick={() => setPanel(panel === "file" ? null : "file")}
+            />
+            <DockButton
+              icon={<ScrollText className="h-4 w-4" />}
+              label="Record"
+              active={panel === "record"}
+              onClick={() => setPanel(panel === "record" ? null : "record")}
+            />
+            <DockButton
+              icon={
+                paused ? <Play className="h-4 w-4" /> : <Pause className="h-4 w-4" />
+              }
+              label={paused ? "Resume" : "Recess"}
+              active={paused}
+              onClick={() => setPaused((value) => !value)}
+            />
+          </div>
         </div>
       </header>
 
-      <div className="grid min-h-0 flex-1 grid-cols-1 gap-8 lg:grid-cols-[1fr_21rem] xl:grid-cols-[1fr_24rem] lg:gap-10">
-        {/* The record of proceedings. */}
-        <section className="flex min-h-[28rem] flex-col">
-          <h2 className="rule-heading">
-            <span>Record of proceedings</span>
-            <span className="tabular-nums">
-              {session.turns.length}{" "}
-              {session.turns.length === 1 ? "entry" : "entries"}
-            </span>
-          </h2>
+      {/* ---- The room ------------------------------------------------- */}
+      <div className="chamber-stage">
+        <Chamber
+          stage={stage}
+          studentSide={session.studentSide}
+          phase={session.phase}
+          paused={paused}
+        />
 
-          <ScrollArea ref={scrollRef} className="-mx-1 flex-1 px-1">
-            {session.turns.length === 0 ? (
-              <div className="flex min-h-[22rem] flex-col items-center justify-center px-6 text-center">
-                <p className="display-sm">The court is in session.</p>
-                <p className="mx-auto mt-3 max-w-md font-serif leading-relaxed text-muted-foreground">
-                  The bench is seated and the record is open. Take the rostrum
-                  and make your appearance.
-                </p>
-              </div>
-            ) : (
-              <ol className="divide-y divide-rule/60">
-                {session.turns.map((turn, index) => (
-                  <RecordEntry
-                    key={turn.id}
-                    index={index + 1}
-                    turn={parseTurn(turn)}
-                    verifiedCitations={verifiedCitations}
-                  />
-                ))}
-              </ol>
-            )}
-          </ScrollArea>
-        </section>
-
-        <aside className="flex flex-col gap-8">
-          <div>
-            <h2 className="rule-heading">
-              <span>The rostrum</span>
-            </h2>
-            <div className="pt-4">
-              <VoiceControl
-                sessionId={sessionId}
-                onTurnComplete={handleTurnComplete}
-              />
-            </div>
-          </div>
-
-          {/* Was a set of hand-rolled buttons whose initial state ("floor") no
-              panel answered to, so the brief opened blank and stayed blank
-              until something was clicked. Radix picks the first head by
-              default and keeps the arrow keys working. */}
-          <Tabs defaultValue="brief" className="flex min-h-0 flex-1 flex-col">
-            <TabsList>
-              <TabsTrigger value="brief">Brief</TabsTrigger>
-              <TabsTrigger value="witnesses">
-                Witnesses ({session.case.witnesses?.length ?? 0})
-              </TabsTrigger>
-              <TabsTrigger value="statutes">Statutes</TabsTrigger>
-            </TabsList>
-
-            <TabsContent
-              value="brief"
-              className="max-h-[22rem] overflow-y-auto pr-1"
-            >
-              <p className="font-serif leading-relaxed text-foreground/85">
-                {session.case.summary}
-              </p>
-              {session.case.brief && (
-                <CaseBriefArgument brief={session.case.brief} />
-              )}
-            </TabsContent>
-
-            <TabsContent
-              value="witnesses"
-              className="max-h-[22rem] overflow-y-auto pr-1"
-            >
-              <ul className="divide-y divide-rule/70">
-                {session.case.witnesses?.map((w, idx) => (
-                  <li key={idx} className="py-3 first:pt-0">
-                    <div className="flex items-baseline justify-between gap-3">
-                      <span className="font-serif text-foreground">
-                        {w.name}
-                      </span>
-                      <span className="apparatus shrink-0 text-muted-foreground">
-                        {w.role}
-                      </span>
-                    </div>
-                    <p className="mt-1 font-serif text-sm italic leading-relaxed text-foreground/75">
-                      “{w.statement}”
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            </TabsContent>
-
-            <TabsContent
-              value="statutes"
-              className="max-h-[22rem] overflow-y-auto pr-1"
-            >
-              <p className="apparatus text-muted-foreground">
-                Provisions in play
-              </p>
-              <p className="mt-2 font-mono text-xs leading-relaxed text-foreground/85">
-                {session.case.applicableLaws}
-              </p>
-              <p className="mt-4 border-t border-rule pt-3 font-serif text-sm leading-relaxed text-muted-foreground">
-                Every citation either side makes is checked against the corpus
-                before it reaches the record. One that is not in it is marked as
-                such.
-              </p>
-            </TabsContent>
-          </Tabs>
-        </aside>
-      </div>
-    </div>
-  );
-}
-
-/**
- * One paragraph of the record.
- *
- * The provenance rail on the right is the point of the whole layout: every
- * provision an agent leant on is shown beside the words it produced, with its
- * verification state attached. The mark is per provision, not per instrument:
- * one diffed against pakistancode.gov.pk reads Verified in seal green while
- * one still under review reads Unverified in stamp red, even where both come
- * from the same Act — which is exactly what a student needs to see before
- * repeating any of it in a real courtroom.
- *
- * The rail reads the provenance persisted with the turn where there is any.
- * Before that was stored it could only re-derive a single citation from the
- * `[OBJECTION: …]` prefix, so a reload silently dropped every provision the
- * bench and the witness had relied on, and dropped the "not in corpus" mark
- * altogether — the record went quiet at exactly the point it had most to say.
- * Turns written before the column existed still take that older path.
- */
-function RecordEntry({
-  index,
-  turn,
-  verifiedCitations,
-}: {
-  index: number;
-  turn: ParsedTurn;
-  verifiedCitations: Set<string>;
-}) {
-  const isVerified = turn.citation
-    ? verifiedCitations.has(turn.citation.trim())
-    : false;
-  const grounded = turn.provenance?.grounded ?? [];
-  const fabricated = turn.provenance?.fabricated ?? [];
-
-  return (
-    <li
-      data-mark={turn.mark}
-      className={cn(
-        "record-entry py-4",
-        // Only the two marks a student must not miss keep a wash behind them.
-        // Counsel and the bench are told apart by the rule and the name, the
-        // way a transcript tells them apart.
-        turn.mark === "objection" && "pl-4 pr-3",
-        turn.mark === "ruling" && "pl-4 pr-3",
-      )}
-    >
-      <div className="grid gap-x-5 gap-y-2 lg:grid-cols-[8.5rem_1fr_7.5rem]">
-        <div className="flex items-baseline gap-2 lg:flex-col lg:gap-1">
-          <span className="apparatus tabular-nums text-muted-foreground/70">
-            ¶{String(index).padStart(2, "0")}
-          </span>
-          <span
-            className={cn(
-              "apparatus",
-              turn.mark === "objection" && "text-stamp",
-              turn.mark === "ruling" && "text-primary",
-              turn.mark === "witness" && "text-seal",
-              turn.mark === "counsel" && "text-foreground",
-              turn.mark === "bench" && "text-primary",
-            )}
-          >
-            {turn.speaker}
-          </span>
-        </div>
-
-        <div className="min-w-0 space-y-2">
-          {turn.ground && (
-            <p className="apparatus text-stamp">Objection — {turn.ground}</p>
-          )}
-
-          {turn.ruling && (
-            <p>
-              <span
-                className={
-                  turn.ruling === "SUSTAINED"
-                    ? "judicial-stamp-sustained"
-                    : "judicial-stamp-overruled"
-                }
-              >
-                {turn.ruling}
-              </span>
-            </p>
-          )}
-
-          <p className="font-serif text-[1.0625rem] leading-relaxed text-foreground">
-            {turn.text}
+        {paused && (
+          <p className="chamber-recess apparatus">
+            In recess — the live view is paused
           </p>
+        )}
+      </div>
 
-          {turn.reasoning && <ReasoningTrace steps={turn.reasoning} />}
+      {/* ---- What is being said --------------------------------------- */}
+      <SubtitleBar stage={stage} live={live} />
+
+      {/* ---- The rostrum ---------------------------------------------- */}
+      <div className="chamber-dock">
+        <div className="chamber-dock-rostrum">
+          <VoiceControl
+            sessionId={sessionId}
+            onTurnComplete={handleTurnComplete}
+            onStageChange={handleStageChange}
+            variant="dock"
+          />
         </div>
 
-        {/* The provenance rail. Never conditional on how tidy the output
-            looks: an unverified provision says so beside the words that
-            leant on it, every time. */}
-        <div className="flex flex-row flex-wrap items-baseline gap-x-2 gap-y-1 lg:flex-col lg:items-end">
-          {grounded.length > 0
-            ? grounded.map((provision) => (
-                <ProvenanceMark
-                  key={provision.citation}
-                  citation={provision.citation}
-                  verified={provision.verified}
-                  heading={provision.heading}
-                />
-              ))
-            : turn.citation && (
-                <ProvenanceMark
-                  citation={turn.citation}
-                  verified={isVerified}
-                />
-              )}
+        <div className="chamber-dock-actions">
+          <DockButton
+            icon={<PenLine className="h-4 w-4" />}
+            label="Address"
+            onClick={() => setComposerOpen(true)}
+          />
 
-          {/* A citation the corpus does not recognise at all. Distinct from an
-              unverified one: that provision exists and its wording is still
-              being confirmed, this one was never in the statute book. */}
-          {fabricated.map((citation) => (
-            <span
-              key={citation}
-              className="apparatus text-stamp"
-              title={`Not found in the statute corpus: ${citation}`}
-            >
-              ⚠ not in corpus: {citation}
-            </span>
-          ))}
+          {/* Hides itself when the proceeding engages no grounds. */}
+          <ObjectionDialog
+            sessionId={sessionId}
+            proceedingType={session.case.proceedingType}
+          />
+
+          {canCallWitness && (
+            <CallWitnessDialog
+              sessionId={sessionId}
+              witnesses={session.case.witnesses}
+            />
+          )}
+
+          {/* The words drop out on a phone to keep the dock on two rows, so
+              the label has to live on the control as well — without it this
+              is a bare chevron that advances the hearing, which is the one
+              action on the dock nobody should press by accident. */}
+          <Button
+            onClick={handleAdvancePhase}
+            disabled={advancePhase.isPending}
+            size="sm"
+            aria-label={nextStageLabel}
+            title={nextStageLabel}
+            className="h-11 shrink-0 rounded-sm"
+          >
+            {advancePhase.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : null}
+            <span className="hidden sm:inline">{nextStageLabel}</span>
+            <ChevronRight className="h-4 w-4" />
+          </Button>
         </div>
       </div>
-    </li>
-  );
-}
 
-/** One provision in the rail, with the corpus's own flag on it. */
-function ProvenanceMark({
-  citation,
-  verified,
-  heading,
-}: {
-  citation: string;
-  verified: boolean;
-  heading?: string;
-}) {
-  return (
-    <>
-      <span
-        className="font-mono text-xs text-foreground/80"
-        title={heading || undefined}
-      >
-        {citation}
-      </span>
-      <span
-        className={cn("apparatus", verified ? "text-seal" : "text-stamp")}
-        title={
-          verified
-            ? "Diffed word-for-word against its official source."
-            : "This provision's text has not been checked against pakistancode.gov.pk. Do not quote it as authoritative."
-        }
-      >
-        {verified ? "✓ Verified" : "⚠ Unverified"}
-      </span>
-    </>
-  );
-}
+      {/* ---- Overlays -------------------------------------------------- */}
+      <CaseFilePanel
+        open={panel === "file"}
+        onClose={() => setPanel(null)}
+        courtCase={session.case}
+        witnessOnStand={stage.witnessOnStand}
+      />
 
-function ReasoningTrace({ steps }: { steps: CourtReasoningStep[] }) {
-  return (
-    <details className="group mt-2 border-l border-rule pl-3">
-      <summary className="apparatus inline-flex cursor-pointer list-none items-center gap-1.5 text-muted-foreground transition-colors hover:text-foreground">
-        <ChevronRight className="h-3.5 w-3.5 transition-transform group-open:rotate-90" />
-        <span>
-          How the bench got there ({steps.length}{" "}
-          {steps.length === 1 ? "step" : "steps"})
-        </span>
-      </summary>
+      <TranscriptPanel
+        open={panel === "record"}
+        onClose={() => setPanel(null)}
+        turns={session.turns}
+        verifiedCitations={verifiedCitations}
+      />
 
-      <ol className="mt-2.5 space-y-2.5">
-        {steps.map((step, index) => (
-          <li key={index} className="space-y-0.5">
-            <p className="apparatus text-muted-foreground/70 tabular-nums">
-              {index + 1}
-            </p>
-            {step.thought && (
-              <p className="font-serif text-sm italic leading-snug text-foreground/85">
-                {step.thought}
-              </p>
-            )}
-            {step.action && (
-              <p className="break-all font-mono text-xs leading-snug text-primary">
-                {step.action}
-              </p>
-            )}
-            {step.observation && (
-              <p className="font-serif text-sm leading-snug text-foreground/60">
-                {step.observation}
-              </p>
-            )}
-          </li>
-        ))}
-      </ol>
-    </details>
+      <AddressComposer
+        sessionId={sessionId}
+        open={composerOpen}
+        onOpenChange={setComposerOpen}
+        witnessOnStand={stage.witnessOnStand}
+      />
+    </div>
   );
 }
 
@@ -723,6 +448,13 @@ function CallWitnessDialog({
           queryClient.setQueryData(getGetSessionQueryKey(sessionId), data);
           setIsOpen(false);
           setWitness("");
+          // The room does the announcing — the witness walks to the box — but
+          // a student who was looking at the dock rather than the bench gets
+          // told in words as well.
+          toast({
+            title: `${witness} is called`,
+            description: "The witness is taking the stand.",
+          });
         },
         onError: (error) => {
           toast({
@@ -738,9 +470,12 @@ function CallWitnessDialog({
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          Call a witness
-        </Button>
+        <button type="button" className="chamber-dock-button">
+          <span aria-hidden="true">
+            <UserPlus className="h-4 w-4" />
+          </span>
+          <span className="chamber-dock-label">Call witness</span>
+        </button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
@@ -770,7 +505,10 @@ function CallWitnessDialog({
           </Select>
         </div>
         <DialogFooter>
-          <Button onClick={handleCall} disabled={!witness || callWitness.isPending}>
+          <Button
+            onClick={handleCall}
+            disabled={!witness || callWitness.isPending}
+          >
             {callWitness.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : null}
@@ -838,13 +576,15 @@ function ObjectionDialog({
       <DialogTrigger asChild>
         {/* The one control on the page that keeps a reserved colour, because
             it is the one that raises an objection. */}
-        <Button
-          variant="outline"
-          size="sm"
-          className="border-stamp/50 text-stamp"
+        <button
+          type="button"
+          className="chamber-dock-button chamber-dock-button--stamp"
         >
-          Object
-        </Button>
+          <span aria-hidden="true" className="font-mono text-base leading-none">
+            §
+          </span>
+          <span className="chamber-dock-label">Object</span>
+        </button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[540px]">
         <DialogHeader>
@@ -859,7 +599,10 @@ function ObjectionDialog({
 
         <div className="space-y-5 py-1">
           <div className="space-y-2">
-            <label htmlFor="objection-ground" className="apparatus text-muted-foreground">
+            <label
+              htmlFor="objection-ground"
+              className="apparatus text-muted-foreground"
+            >
               Ground
             </label>
             <Select value={groundId} onValueChange={setGroundId}>
@@ -939,7 +682,11 @@ function ObjectionDialog({
         </div>
 
         <DialogFooter className="gap-2 sm:gap-0">
-          <Button variant="ghost" onClick={() => setIsOpen(false)} disabled={isPending}>
+          <Button
+            variant="ghost"
+            onClick={() => setIsOpen(false)}
+            disabled={isPending}
+          >
             Cancel
           </Button>
           <Button

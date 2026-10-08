@@ -14,12 +14,25 @@ import {
   speakerLabel,
   type SpeakerCue,
 } from "@/components/live-caption";
+import type { LiveStage } from "@/components/courtroom/stage-state";
 import { useToast } from "@/hooks/use-toast";
 
 interface VoiceRecorderProps {
   sessionId: number;
   onTurnComplete: () => void;
   disabled?: boolean;
+  /**
+   * Reports what the rostrum is doing so the chamber can light the figure that
+   * currently holds the floor. Read-only: this control still owns the state and
+   * behaves identically whether or not anyone is listening.
+   */
+  onStageChange?: (stage: LiveStage) => void;
+  /**
+   * "dock" drops the caption and the status line, because inside the courtroom
+   * the chamber's own subtitle bar is already showing both and two copies of a
+   * live caption on one screen is worse than none.
+   */
+  variant?: "panel" | "dock";
 }
 
 function parseSpeakerCue(event: AppEvent): SpeakerCue | null {
@@ -91,6 +104,8 @@ export function VoiceControl({
   sessionId,
   onTurnComplete,
   disabled,
+  onStageChange,
+  variant = "panel",
 }: VoiceRecorderProps) {
   const [streamState, setStreamState] = useState<
     "idle" | "processing" | "playing" | "interrupting"
@@ -98,6 +113,9 @@ export function VoiceControl({
   const [cue, setCue] = useState<SpeakerCue | null>(null);
   const [caption, setCaption] = useState("");
   const [note, setNote] = useState<string | null>(null);
+  // Already sent by the stream and until now dropped on the floor. The chamber
+  // shows it as the student's own subtitle while the court is considering.
+  const [userTranscript, setUserTranscript] = useState<string | null>(null);
   const recorder = useVoiceRecorder();
   const interrupter = useVoiceRecorder();
   const { toast } = useToast();
@@ -117,6 +135,9 @@ export function VoiceControl({
       }
       if (event.type === "note" && typeof event.data === "string") {
         setNote(event.data);
+      }
+      if (event.type === "user_transcript" && typeof event.data === "string") {
+        setUserTranscript(event.data);
       }
     },
     onTranscript: (delta) => setCaption((text) => text + delta),
@@ -142,6 +163,7 @@ export function VoiceControl({
     setStreamState("processing");
     setCue(null);
     setCaption("");
+    setUserTranscript(null);
     try {
       await stream.streamVoiceResponse(
         `/api/sessions/${sessionId}/interject`,
@@ -208,6 +230,21 @@ export function VoiceControl({
     enabled: isRecording,
   });
 
+  // What the rostrum is doing, pushed up for the chamber to draw. Recording is
+  // the recorder's state rather than the stream's, so it has to be folded in
+  // here — the stream knows nothing until the blob is posted.
+  const liveState: LiveStage["state"] = isRecording ? "recording" : streamState;
+
+  useEffect(() => {
+    onStageChange?.({
+      state: liveState,
+      cue,
+      caption,
+      userTranscript,
+      note,
+    });
+  }, [liveState, cue, caption, userTranscript, note, onStageChange]);
+
   const handleToggleRecord = async () => {
     if (recorder.state === "recording") {
       setStreamState("processing");
@@ -230,6 +267,7 @@ export function VoiceControl({
         setCue(null);
         setCaption("");
         setNote(null);
+        setUserTranscript(null);
         await recorder.startRecording();
       } catch (error) {
         toast({
@@ -241,8 +279,10 @@ export function VoiceControl({
     }
   };
 
+  const isDock = variant === "dock";
+
   return (
-    <div className="space-y-4">
+    <div className={cn(isDock ? "space-y-2" : "space-y-4")}>
       {/* One control, and it says what pressing it does rather than what state
           the machine is in. Stamp while the record is open, because that is
           the one moment the student is on the record and needs to know it. */}
@@ -250,7 +290,8 @@ export function VoiceControl({
         onClick={handleToggleRecord}
         disabled={disabled || isProcessing || isPlaying || isInterrupting}
         className={cn(
-          "h-12 w-full justify-center rounded-sm text-sm",
+          "w-full justify-center rounded-sm text-sm",
+          isDock ? "h-11 px-5" : "h-12",
           isRecording &&
             "border-stamp bg-stamp text-stamp-foreground hover:bg-stamp",
           isProcessing && "border-secondary-border bg-secondary text-foreground",
@@ -279,9 +320,14 @@ export function VoiceControl({
         )}
       </Button>
 
-      <div className="space-y-2">
+      <div className={cn(isDock ? "" : "space-y-2")}>
         <LevelRule level={level} live={isRecording} />
-        <div className="flex items-baseline justify-between gap-3">
+        <div
+          className={cn(
+            "flex items-baseline justify-between gap-3",
+            isDock && "hidden",
+          )}
+        >
           <span
             className={cn(
               "apparatus",
@@ -304,19 +350,22 @@ export function VoiceControl({
         </div>
       </div>
 
-      {isPlaying && cue && (
+      {/* In the chamber these three are drawn by the courtroom's own subtitle
+          bar, against the figure that is speaking. Rendering them here as well
+          put the same warning on screen twice. */}
+      {!isDock && isPlaying && cue && (
         <p className="apparatus truncate border-l-2 border-primary pl-3 text-primary">
           {speakerLabel(cue)} has the floor
         </p>
       )}
 
-      {note && (
+      {!isDock && note && (
         <p className="border-l-2 border-rule pl-3 font-serif text-sm leading-relaxed text-muted-foreground">
           {note}
         </p>
       )}
 
-      {cue && <LiveCaption cue={cue} text={caption} />}
+      {!isDock && cue && <LiveCaption cue={cue} text={caption} />}
     </div>
   );
 }

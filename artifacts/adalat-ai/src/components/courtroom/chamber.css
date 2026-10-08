@@ -1,0 +1,1039 @@
+/*
+ * The chamber.
+ *
+ * Sizes are in `cqw` against the chamber's own inline size, so the room scales
+ * as one object instead of as thirty independently-tuned boxes: the bench, the
+ * plates, the figures and the panelling all keep their proportions from a
+ * 360px phone to a 2560px projector. That matters more than usual here — this
+ * is presented from a lectern onto whatever screen the venue has.
+ *
+ * Depth is a single custom property, `--depth` (0 = the back wall, 1 = the
+ * rail in front of the viewer). It drives scale, haze and how much key light
+ * reaches a station, so nothing in the room can drift out of agreement about
+ * how far away it is.
+ */
+
+.chamber {
+  --chamber-air: hsl(40 26% 87%);
+  --chamber-wall: hsl(32 22% 73%);
+  --chamber-wall-dark: hsl(30 22% 60%);
+  --chamber-floor: hsl(28 20% 56%);
+  --chamber-wood: hsl(26 32% 41%);
+  --chamber-wood-lit: hsl(28 40% 53%);
+  --chamber-wood-dark: hsl(24 32% 26%);
+  --chamber-brass: hsl(40 72% 42%);
+  --chamber-key: hsl(45 82% 88%);
+
+  --figure-cloth: hsl(220 22% 21%);
+  --figure-cloth-lit: hsl(220 17% 33%);
+  --figure-cloth-shadow: hsl(220 27% 11%);
+  --figure-linen: hsl(60 22% 96%);
+  --figure-skin: hsl(28 33% 60%);
+  --figure-skin-lit: hsl(30 40% 71%);
+  --figure-skin-shadow: hsl(28 29% 48%);
+  --figure-hair: hsl(24 22% 15%);
+  --figure-hair-grey: hsl(30 8% 56%);
+  --figure-tie: hsl(220 27% 13%);
+  --figure-plain: hsl(202 14% 64%);
+  --figure-plain-shadow: hsl(202 15% 49%);
+
+  /* The room's shape, in one place.
+     A phone is not a short wide room — holding 16:9 there left the figures
+     the size of a fingernail, because the ratio is width-limited and the
+     width is all there is. A taller room at the same scale shows less of the
+     side walls and more of the people, which is the right thing to lose.
+     `min-height` used to sit here and was the bug: it won against
+     `aspect-ratio`, so a narrow chamber went off-ratio, the percentage-anchored
+     floor rose while the cqw-sized figures did not, and the witness ended up
+     standing outside the frame. */
+  --room-ratio: 16 / 9;
+
+  position: relative;
+  container-type: inline-size;
+  width: 100%;
+  aspect-ratio: var(--room-ratio);
+  overflow: hidden;
+  isolation: isolate;
+  perspective: 1500px;
+  perspective-origin: 50% 34%;
+  background: var(--chamber-air);
+  border-radius: var(--radius);
+  border: 1px solid hsl(var(--rule));
+}
+
+.dark .chamber {
+  --chamber-air: hsl(222 30% 7%);
+  --chamber-wall: hsl(25 20% 17%);
+  --chamber-wall-dark: hsl(24 24% 11%);
+  --chamber-floor: hsl(24 18% 13%);
+  --chamber-wood: hsl(25 30% 23%);
+  --chamber-wood-lit: hsl(28 34% 33%);
+  --chamber-wood-dark: hsl(24 32% 12%);
+  --chamber-brass: hsl(40 78% 58%);
+  --chamber-key: hsl(45 68% 74%);
+
+  --figure-cloth: hsl(220 20% 17%);
+  --figure-cloth-lit: hsl(220 16% 28%);
+  --figure-cloth-shadow: hsl(222 28% 9%);
+  --figure-linen: hsl(55 18% 88%);
+  --figure-skin: hsl(28 26% 50%);
+  --figure-skin-lit: hsl(30 32% 61%);
+  --figure-skin-shadow: hsl(28 24% 39%);
+  --figure-hair: hsl(24 18% 11%);
+  --figure-hair-grey: hsl(30 6% 48%);
+  --figure-tie: hsl(222 26% 10%);
+  --figure-plain: hsl(202 12% 46%);
+  --figure-plain-shadow: hsl(202 14% 34%);
+}
+
+/* ---- The shell of the room ------------------------------------------ */
+
+/* Panelled back wall. The panel seams are what give the eye a scale to read
+   the figures against; without them the room is a gradient. */
+.chamber-wall {
+  position: absolute;
+  inset: 0 0 38% 0;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 7cqw,
+      color-mix(in srgb, var(--chamber-wood-dark) 22%, transparent) 7cqw 7.35cqw
+    ),
+    linear-gradient(
+      to bottom,
+      var(--chamber-wall-dark) 0%,
+      var(--chamber-wall) 46%,
+      color-mix(in srgb, var(--chamber-wall-dark) 88%, black) 100%
+    );
+}
+
+.chamber-cornice {
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 4.4cqw;
+  background: linear-gradient(
+    to bottom,
+    var(--chamber-wood-dark),
+    var(--chamber-wood) 62%,
+    var(--chamber-wood-dark)
+  );
+  box-shadow: 0 0.5cqw 1.6cqw color-mix(in srgb, black 32%, transparent);
+}
+
+/* The floor recedes; the joint where it meets the panelling is the horizon
+   every station is placed against. */
+.chamber-floor {
+  position: absolute;
+  inset: 62% 0 0 0;
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--chamber-wood-dark) 70%, transparent),
+      transparent 18%
+    ),
+    linear-gradient(to bottom, var(--chamber-floor), var(--chamber-wood-dark));
+}
+
+.chamber-floor::before {
+  /* Boards, converging on the vanishing point behind the bench. */
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent 0 4.5cqw,
+    color-mix(in srgb, black 16%, transparent) 4.5cqw 4.7cqw
+  );
+  transform: perspective(700px) rotateX(58deg);
+  transform-origin: top center;
+  opacity: 0.55;
+}
+
+/* ---- Light ----------------------------------------------------------- */
+
+.chamber-shaft {
+  position: absolute;
+  left: 50%;
+  top: -4%;
+  width: 56cqw;
+  height: 74%;
+  transform: translateX(-50%);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--chamber-key) 30%, transparent),
+    transparent 76%
+  );
+  clip-path: polygon(37% 0, 63% 0, 90% 100%, 10% 100%);
+  filter: blur(6px);
+  animation: chamber-breathe 11s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.chamber-shaft--still,
+.chamber[data-paused] .chamber-shaft {
+  animation: none;
+}
+
+@keyframes chamber-breathe {
+  0%,
+  100% {
+    opacity: 0.85;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+/* Atmosphere. Distance in a real room is haze, not a smaller drawing. */
+.chamber-haze {
+  position: absolute;
+  inset: 0 0 30% 0;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--chamber-key) 16%, transparent),
+    transparent 72%
+  );
+  pointer-events: none;
+}
+
+.chamber-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 78% 68% at 50% 40%,
+    transparent 42%,
+    color-mix(in srgb, black 46%, transparent) 100%
+  );
+}
+
+.dark .chamber-vignette {
+  background: radial-gradient(
+    ellipse 76% 66% at 50% 40%,
+    transparent 38%,
+    color-mix(in srgb, black 72%, transparent) 100%
+  );
+}
+
+/* ---- The gallery, behind the well ------------------------------------ */
+
+.chamber-gallery {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 30%;
+  height: 12cqw;
+  z-index: 1;
+  filter: blur(2.5px) brightness(0.72);
+  opacity: 0.62;
+  pointer-events: none;
+}
+
+.chamber-gallery-row {
+  position: absolute;
+  left: 4%;
+  right: 4%;
+  height: 2.4cqw;
+  border-radius: 0.3cqw;
+  background: linear-gradient(
+    to bottom,
+    var(--chamber-wood-lit),
+    var(--chamber-wood-dark)
+  );
+}
+
+.chamber-gallery-row[data-row='0'] {
+  bottom: 7.4cqw;
+  left: 12%;
+  right: 12%;
+}
+.chamber-gallery-row[data-row='1'] {
+  bottom: 3.7cqw;
+  left: 8%;
+  right: 8%;
+}
+.chamber-gallery-row[data-row='2'] {
+  bottom: 0;
+}
+
+/* ---- Stations -------------------------------------------------------- */
+
+.chamber-station {
+  position: absolute;
+  transform-style: preserve-3d;
+  transition:
+    transform 420ms cubic-bezier(0.16, 1, 0.3, 1),
+    filter 380ms ease;
+  /* Far stations sit in more air and take less of the key light. */
+  filter: brightness(calc(0.84 + var(--depth) * 0.16))
+    saturate(calc(0.88 + var(--depth) * 0.12));
+}
+
+/* The spotlight is the whole point of the room: it is the one thing that
+   answers "who is speaking" without reading a word. */
+.chamber-station::before {
+  content: '';
+  position: absolute;
+  inset: -22% -18% -8%;
+  z-index: -1;
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at 50% 38%,
+    color-mix(in srgb, var(--chamber-key) 44%, transparent),
+    transparent 68%
+  );
+  opacity: 0;
+  transition: opacity 360ms ease;
+  pointer-events: none;
+}
+
+.chamber-station--active {
+  filter: brightness(1.12) saturate(1.06);
+  transform: translateY(-0.7cqw);
+}
+
+.chamber-station--active::before {
+  opacity: 1;
+}
+
+.chamber-figure {
+  display: flex;
+  justify-content: center;
+  filter: drop-shadow(0 1cqw 1.4cqw color-mix(in srgb, black 42%, transparent));
+}
+
+.chamber-figure svg {
+  width: 100%;
+  height: auto;
+}
+
+/* ---- The bench ------------------------------------------------------- */
+
+.chamber-bench-station {
+  left: 50%;
+  bottom: 33%;
+  width: 34cqw;
+  transform: translateX(-50%);
+  z-index: 3;
+}
+
+.chamber-bench-station.chamber-station--active {
+  transform: translateX(-50%) translateY(-0.7cqw);
+}
+
+/* Sits between the cornice and the top of the judge's head. Any lower and the
+   head covers the scales; any higher and it fouls the cornice. */
+.chamber-emblem {
+  position: absolute;
+  left: 50%;
+  top: 5.1cqw;
+  width: 7.6cqw;
+  height: 7.6cqw;
+  transform: translateX(-50%);
+  z-index: 2;
+  opacity: 0.8;
+}
+
+.chamber-figure--judge {
+  width: 10.5cqw;
+  margin: 0 auto -1cqw;
+}
+
+.chamber-bench {
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+/* The desktop, seen from slightly above and in front. */
+.chamber-bench-top {
+  position: relative;
+  height: 3.2cqw;
+  border-radius: 0.3cqw 0.3cqw 0 0;
+  background: linear-gradient(
+    to bottom,
+    var(--chamber-wood-lit),
+    var(--chamber-wood)
+  );
+  transform: perspective(420px) rotateX(52deg);
+  transform-origin: bottom center;
+  box-shadow: 0 -0.2cqw 0.8cqw color-mix(in srgb, black 30%, transparent) inset;
+}
+
+.chamber-bench-face {
+  position: relative;
+  height: 8cqw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0 0 0.4cqw 0.4cqw;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 5cqw,
+      color-mix(in srgb, black 20%, transparent) 5cqw 5.3cqw
+    ),
+    linear-gradient(
+      to bottom,
+      var(--chamber-wood) 0%,
+      var(--chamber-wood-dark) 100%
+    );
+  box-shadow:
+    0 1.2cqw 2.4cqw color-mix(in srgb, black 45%, transparent),
+    0 0.15cqw 0 color-mix(in srgb, var(--chamber-wood-lit) 70%, transparent) inset;
+}
+
+/* ---- Things on a desk ------------------------------------------------ */
+
+.chamber-desk-papers,
+.chamber-desk-brief,
+.chamber-gavel,
+.chamber-mic {
+  position: absolute;
+  bottom: 0.4cqw;
+  display: block;
+}
+
+.chamber-desk-papers {
+  left: 14%;
+  width: 4.2cqw;
+  height: 1.1cqw;
+  border-radius: 0.1cqw;
+  background: linear-gradient(
+    to bottom,
+    var(--figure-linen),
+    color-mix(in srgb, var(--figure-linen) 70%, var(--chamber-wood-dark))
+  );
+  box-shadow: 0 0.2cqw 0.4cqw color-mix(in srgb, black 35%, transparent);
+}
+
+.chamber-desk-brief {
+  right: 16%;
+  width: 3.2cqw;
+  height: 0.9cqw;
+  border-radius: 0.1cqw;
+  background: color-mix(in srgb, hsl(var(--primary)) 70%, black);
+  opacity: 0.75;
+}
+
+.chamber-gavel {
+  right: 18%;
+  width: 3.4cqw;
+  height: 0.7cqw;
+  border-radius: 0.35cqw;
+  background: linear-gradient(
+    to right,
+    var(--chamber-wood-dark) 0 38%,
+    var(--chamber-wood-lit) 38% 100%
+  );
+  box-shadow: 0 0.2cqw 0.4cqw color-mix(in srgb, black 40%, transparent);
+}
+
+.chamber-mic {
+  left: 46%;
+  width: 0.35cqw;
+  height: 3.4cqw;
+  border-radius: 0.2cqw;
+  background: color-mix(in srgb, var(--figure-cloth-lit) 90%, black);
+}
+
+.chamber-mic::after {
+  content: '';
+  position: absolute;
+  top: -0.7cqw;
+  left: 50%;
+  width: 1.1cqw;
+  height: 1.1cqw;
+  border-radius: 50%;
+  transform: translateX(-50%);
+  background: var(--figure-cloth-lit);
+}
+
+/* ---- Name plates ----------------------------------------------------- */
+
+.chamber-plate {
+  padding: 0.5cqw 1.2cqw;
+  border-radius: 0.2cqw;
+  border: 1px solid color-mix(in srgb, var(--chamber-brass) 45%, transparent);
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--chamber-wood-dark) 80%, black),
+    color-mix(in srgb, black 70%, transparent)
+  );
+  box-shadow: 0 0.2cqw 0.5cqw color-mix(in srgb, black 40%, transparent);
+  max-width: 88%;
+}
+
+.chamber-plate--lit {
+  border-color: var(--chamber-brass);
+  box-shadow:
+    0 0 1.6cqw color-mix(in srgb, var(--chamber-brass) 42%, transparent),
+    0 0.2cqw 0.5cqw color-mix(in srgb, black 40%, transparent);
+}
+
+.chamber-plate-title {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  font-size: clamp(0.5rem, 1.15cqw, 0.75rem);
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--chamber-brass) 78%, white);
+}
+
+.chamber-plate--lit .chamber-plate-title {
+  color: color-mix(in srgb, var(--chamber-brass) 30%, white);
+}
+
+.chamber-plate-sub {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: clamp(0.4rem, 0.92cqw, 0.625rem);
+  line-height: 1.5;
+  /* Opaque, not a 55% wash. Composited over the plate's near-black gradient
+     the wash measured about 2.5:1, which is a caption nobody over forty reads
+     from the back of a room. Dimmer than the title by mix, not by alpha. */
+  color: color-mix(in srgb, var(--chamber-brass) 82%, white);
+}
+
+/* ---- The witness box ------------------------------------------------- */
+
+.chamber-box-station {
+  right: 6%;
+  bottom: 22%;
+  width: 17cqw;
+  z-index: 4;
+}
+
+.chamber-box {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.chamber-figure--witness {
+  width: 8.5cqw;
+  margin-bottom: -1cqw;
+}
+
+.chamber-box-rail {
+  position: relative;
+  width: 100%;
+  height: 7cqw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.3cqw;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 3.4cqw,
+      color-mix(in srgb, black 22%, transparent) 3.4cqw 3.65cqw
+    ),
+    linear-gradient(to bottom, var(--chamber-wood), var(--chamber-wood-dark));
+  box-shadow:
+    0 1cqw 2cqw color-mix(in srgb, black 42%, transparent),
+    0 0.15cqw 0 color-mix(in srgb, var(--chamber-wood-lit) 60%, transparent) inset;
+}
+
+/* An empty box should read as empty rather than as unfinished. */
+.chamber-box-station:not(.chamber-station--active) .chamber-box-rail::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 0.3cqw;
+  background: color-mix(in srgb, black 18%, transparent);
+  pointer-events: none;
+}
+
+/* ---- The clerk ------------------------------------------------------- */
+
+.chamber-clerk-station {
+  left: 27%;
+  bottom: 17%;
+  width: 10cqw;
+  z-index: 5;
+}
+
+.chamber-figure--clerk {
+  width: 6.4cqw;
+  margin: 0 auto -0.8cqw;
+}
+
+.chamber-clerk-desk {
+  height: 3.4cqw;
+  border-radius: 0.25cqw;
+  background: linear-gradient(to bottom, var(--chamber-wood), var(--chamber-wood-dark));
+  box-shadow: 0 0.8cqw 1.6cqw color-mix(in srgb, black 40%, transparent);
+}
+
+/* ---- Counsel --------------------------------------------------------- */
+
+.chamber-counsel-station {
+  bottom: 3%;
+  width: 27cqw;
+  z-index: 6;
+}
+
+.chamber-counsel-station--left {
+  left: 4%;
+}
+
+.chamber-counsel-station--right {
+  right: 4%;
+}
+
+/* The tables angle in toward the bench, which is the single strongest depth
+   cue in the room — two flat rectangles facing the viewer read as a diagram. */
+.chamber-counsel-station--left .chamber-table {
+  transform: rotateY(15deg);
+  transform-origin: right center;
+}
+
+.chamber-counsel-station--right .chamber-table {
+  transform: rotateY(-15deg);
+  transform-origin: left center;
+}
+
+.chamber-figure--counsel {
+  width: 13cqw;
+  margin: 0 auto -1.4cqw;
+}
+
+.chamber-table {
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+.chamber-table-top {
+  position: relative;
+  height: 2.6cqw;
+  border-radius: 0.25cqw 0.25cqw 0 0;
+  background: linear-gradient(to bottom, var(--chamber-wood-lit), var(--chamber-wood));
+  transform: perspective(400px) rotateX(50deg);
+  transform-origin: bottom center;
+}
+
+.chamber-table-face {
+  position: relative;
+  height: 6.4cqw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0 0 0.3cqw 0.3cqw;
+  background: linear-gradient(to bottom, var(--chamber-wood), var(--chamber-wood-dark));
+  box-shadow:
+    0 1.4cqw 2.6cqw color-mix(in srgb, black 48%, transparent),
+    0 0.15cqw 0 color-mix(in srgb, var(--chamber-wood-lit) 60%, transparent) inset;
+}
+
+/* An objection is the one event that gets its own colour, matching the stamp
+   the written record uses for the same thing. */
+.chamber-counsel-station--objecting .chamber-table-face {
+  box-shadow:
+    0 0 2cqw color-mix(in srgb, hsl(var(--stamp)) 55%, transparent),
+    0 1.4cqw 2.6cqw color-mix(in srgb, black 48%, transparent);
+}
+
+.chamber-counsel-station--objecting::before {
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    color-mix(in srgb, hsl(var(--stamp)) 34%, transparent),
+    transparent 68%
+  );
+  opacity: 1;
+}
+
+/* ---- Foreground ------------------------------------------------------ */
+
+/* The rail the viewer stands behind. Blurred, because it is nearer than the
+   focal plane — which is what sells the depth of everything behind it. */
+.chamber-foreground {
+  position: absolute;
+  left: -4%;
+  right: -4%;
+  /* Dropped until it clears the engraving on the counsel tables — the rail is
+     meant to sit in front of the room, not across its name plates. */
+  bottom: -2.6cqw;
+  height: 5cqw;
+  z-index: 8;
+  border-radius: 0.4cqw;
+  background: linear-gradient(
+    to bottom,
+    var(--chamber-wood-lit),
+    var(--chamber-wood-dark)
+  );
+  filter: blur(3px) brightness(0.6);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+/* ---- Live states ----------------------------------------------------- */
+
+.chamber-thinking {
+  position: absolute;
+  left: 50%;
+  top: -3.4cqw;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.5cqw;
+  white-space: nowrap;
+  color: color-mix(in srgb, var(--chamber-brass) 25%, white);
+  text-shadow: 0 1px 3px hsl(0 0% 0% / 0.6);
+  font-size: clamp(0.5rem, 1.05cqw, 0.6875rem);
+}
+
+.chamber-thinking-dot {
+  width: 0.55cqw;
+  height: 0.55cqw;
+  min-width: 3px;
+  min-height: 3px;
+  border-radius: 50%;
+  background: var(--chamber-brass);
+  animation: chamber-pulse 1.3s ease-in-out infinite;
+}
+
+.chamber-thinking-dot:nth-child(2) {
+  animation-delay: 0.16s;
+}
+.chamber-thinking-dot:nth-child(3) {
+  animation-delay: 0.32s;
+}
+
+@keyframes chamber-pulse {
+  0%,
+  100% {
+    opacity: 0.3;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* The bench's disposition, stamped across the room for as long as it takes to
+   read it. Same two colours the record uses: sustained in seal, overruled in
+   stamp. */
+.chamber-ruling {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.chamber-ruling-word {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: clamp(1rem, 5.4cqw, 3.4rem);
+  font-weight: 700;
+  padding: 0.6cqw 2.4cqw;
+  border: 0.28cqw solid currentColor;
+  border-radius: 0.3cqw;
+  transform: rotate(-7deg);
+}
+
+.chamber-ruling--sustained {
+  color: hsl(var(--seal));
+  background: radial-gradient(
+    ellipse 60% 50% at 50% 50%,
+    color-mix(in srgb, hsl(var(--seal)) 22%, transparent),
+    transparent 70%
+  );
+}
+
+.chamber-ruling--overruled {
+  color: hsl(var(--stamp));
+  background: radial-gradient(
+    ellipse 60% 50% at 50% 50%,
+    color-mix(in srgb, hsl(var(--stamp)) 22%, transparent),
+    transparent 70%
+  );
+}
+
+.chamber-phase {
+  position: absolute;
+  left: 50%;
+  bottom: 1.2cqw;
+  z-index: 9;
+  transform: translateX(-50%);
+  color: color-mix(in srgb, var(--chamber-brass) 40%, white);
+  text-shadow: 0 1px 4px hsl(0 0% 0% / 0.7);
+  pointer-events: none;
+}
+
+/* ---- Narrow screens -------------------------------------------------- */
+
+/* Below this the room is too small to carry two lines of engraving, and the
+   plates start colliding with the figures. The scene keeps working — it is
+   still the same room — it just stops trying to be read like a document. */
+@container (max-width: 560px) {
+  .chamber-plate-sub,
+  .chamber-desk-brief,
+  .chamber-gavel,
+  .chamber-mic {
+    display: none;
+  }
+
+  .chamber-plate {
+    padding: 0.6cqw 1cqw;
+  }
+
+  .chamber-clerk-station {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chamber-shaft,
+  .chamber-thinking-dot {
+    animation: none;
+  }
+
+  .chamber-station {
+    transition-duration: 0.01ms;
+  }
+}
+
+/* =====================================================================
+ * The shell around the room: the head of the cause, the rostrum, and the
+ * two overlays. Everything here is chrome *over* the courtroom rather than
+ * beside it, so the room keeps the screen.
+ * ===================================================================== */
+
+.chamber-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  height: 100%;
+  min-height: 32rem;
+  padding: 0.75rem 1rem 1rem;
+}
+
+.chamber-hud {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  padding-bottom: 0.55rem;
+  border-bottom: 1px solid hsl(var(--rule));
+}
+
+.chamber-hud-right {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  margin-left: auto;
+}
+
+/* The stage sizes the room. `container-type: size` is what lets the chamber
+   below fit itself to whichever of the two dimensions runs out first — the
+   room has to hold 16:9 exactly, because its vertical placements are in
+   percentages and its figures are in cqw, and letting the box go off-ratio
+   walks the bench into the emblem. */
+.chamber-stage {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  container-type: size;
+  display: grid;
+  place-items: center;
+}
+
+.chamber-stage > .chamber {
+  width: min(100cqw, calc(100cqh * var(--room-ratio)));
+  max-width: 100%;
+}
+
+.chamber-recess {
+  position: absolute;
+  top: 0.75rem;
+  left: 50%;
+  z-index: 11;
+  transform: translateX(-50%);
+  padding: 0.3rem 0.75rem;
+  border: 1px solid hsl(var(--rule));
+  border-radius: var(--radius-sm);
+  background: hsl(var(--card) / 0.9);
+  color: hsl(var(--muted-foreground));
+  backdrop-filter: blur(8px);
+}
+
+/* ---- The subtitle bar ------------------------------------------------ */
+
+.chamber-subtitle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  /* Reserved rather than collapsed: this bar fills and empties several times
+     a turn, and letting it push the dock up and down each time is the exact
+     layout shift a student is trying to read through. */
+  min-height: 4.75rem;
+}
+
+.chamber-subtitle-card {
+  width: min(58rem, 100%);
+  max-height: 9.5rem;
+  overflow-y: auto;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid hsl(var(--rule));
+  border-radius: var(--radius);
+  background: hsl(var(--card) / 0.82);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 6px 22px hsl(0 0% 0% / 0.14);
+}
+
+/* ---- The rostrum ----------------------------------------------------- */
+
+.chamber-dock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem 1rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid hsl(var(--rule));
+  border-radius: var(--radius);
+  background: hsl(var(--card) / 0.86);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 10px 34px hsl(0 0% 0% / 0.18);
+}
+
+.chamber-dock-rostrum {
+  width: min(19rem, 100%);
+  flex: 0 1 auto;
+}
+
+.chamber-dock-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+}
+
+/* 44px minimum in both directions, icon over word. The word is not optional:
+   an icon-only dock would make "Object" and "Address" guesses. */
+.chamber-dock-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  min-width: 4.25rem;
+  min-height: 2.75rem;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition:
+    color 160ms ease,
+    background-color 160ms ease,
+    border-color 160ms ease;
+}
+
+.chamber-dock-button:hover:not(:disabled) {
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+}
+
+.chamber-dock-button--active {
+  border-color: hsl(var(--rule));
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+}
+
+.chamber-dock-button--stamp {
+  color: hsl(var(--stamp));
+}
+
+.chamber-dock-button--stamp:hover:not(:disabled) {
+  background: hsl(var(--stamp-wash));
+  color: hsl(var(--stamp));
+}
+
+.chamber-dock-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.chamber-dock-button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+.chamber-dock-label {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  font-size: 0.625rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* ---- Side panels ----------------------------------------------------- */
+
+.chamber-panel {
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  z-index: 45;
+  display: flex;
+  flex-direction: column;
+  width: min(31rem, 92vw);
+  background: hsl(var(--card) / 0.97);
+  backdrop-filter: blur(18px);
+  box-shadow: 0 0 60px hsl(0 0% 0% / 0.32);
+}
+
+.chamber-panel--right {
+  right: 0;
+  border-left: 1px solid hsl(var(--rule));
+}
+
+.chamber-panel--left {
+  left: 0;
+  border-right: 1px solid hsl(var(--rule));
+}
+
+.chamber-panel:focus {
+  outline: none;
+}
+
+/* ---- Short and narrow viewports -------------------------------------- */
+
+@media (max-width: 640px) {
+  .chamber {
+    --room-ratio: 4 / 3;
+  }
+
+  .chamber-shell {
+    padding: 0.5rem 0.6rem 0.75rem;
+    min-height: 30rem;
+  }
+
+  .chamber-hud-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .chamber-subtitle {
+    min-height: 4rem;
+  }
+
+  .chamber-dock {
+    gap: 0.5rem;
+  }
+
+  .chamber-dock-rostrum {
+    width: 100%;
+  }
+}

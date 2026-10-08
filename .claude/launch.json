@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "postgres",
+      "runtimeExecutable": "C:\\Program Files\\PostgreSQL\\18\\bin\\postgres.exe",
+      "runtimeArgs": ["-D", "C:\\Program Files\\PostgreSQL\\18\\data"],
+      "port": 1024
+    },
+    {
       "name": "web",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["run", "dev"],

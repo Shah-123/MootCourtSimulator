@@ -67,8 +67,14 @@ function Router() {
       <Route path="/evidence">
         <Layout><EvidencePage /></Layout>
       </Route>
+      {/* The only full-bleed route: the courtroom needs the whole viewport
+          below the masthead, and sizes itself from the height it is given. */}
       <Route path="/sessions/:id">
-        {params => <Layout><SessionPage id={params.id} /></Layout>}
+        {params => (
+          <Layout fullBleed>
+            <SessionPage id={params.id} />
+          </Layout>
+        )}
       </Route>
       <Route path="/sessions/:id/verdict">
         {params => <Layout><VerdictPage /></Layout>}

@@ -106,11 +106,31 @@ function SignedInAs() {
   );
 }
 
-export function Layout({ children }: { children: ReactNode }) {
+/**
+ * `fullBleed` is for the courtroom and nothing else.
+ *
+ * The chamber sizes itself from the height it is given, so it needs the main
+ * area to be a definite-height flex child rather than a padded document that
+ * grows with its content — and it needs the colophon out of the way, because a
+ * footer under a courtroom reads as the room having ended. Every other page
+ * keeps the padded, scrolling shell.
+ */
+export function Layout({
+  children,
+  fullBleed = false,
+}: {
+  children: ReactNode;
+  fullBleed?: boolean;
+}) {
   const [location] = useLocation();
 
   return (
-    <div className="flex min-h-screen w-full flex-col bg-background selection:bg-primary/20 selection:text-primary">
+    <div
+      className={cn(
+        "flex w-full flex-col bg-background selection:bg-primary/20 selection:text-primary",
+        fullBleed ? "h-svh min-h-[40rem] overflow-hidden" : "min-h-screen",
+      )}
+    >
       <header className="sticky top-0 z-40 border-b border-rule bg-background/95 backdrop-blur-md supports-[backdrop-filter]:bg-background/85">
         <div className="mx-auto flex max-w-[1440px] items-center justify-between gap-6 px-4 py-3 sm:px-6 lg:px-8">
           {/* The name is set as a name, not as a logo tile. A cause list is
@@ -177,14 +197,21 @@ export function Layout({ children }: { children: ReactNode }) {
         </nav>
       </header>
 
-      <main className="mx-auto w-full max-w-[1440px] flex-1 px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+      <main
+        className={cn(
+          "mx-auto w-full max-w-[1440px] flex-1",
+          fullBleed
+            ? "flex min-h-0 flex-col"
+            : "px-4 py-8 sm:px-6 sm:py-10 lg:px-8",
+        )}
+      >
         {children}
       </main>
 
       {/* The colophon of the sheet: what the record is grounded in, and when.
           Set as one line of apparatus rather than as a footer of link columns,
           because there is exactly one fact here worth carrying. */}
-      <footer className="mt-auto border-t border-rule">
+      <footer className={cn("mt-auto border-t border-rule", fullBleed && "hidden")}>
         <div className="mx-auto flex max-w-[1440px] flex-col gap-2 px-4 py-5 sm:flex-row sm:items-baseline sm:justify-between sm:px-6 lg:px-8">
           <p className="apparatus text-muted-foreground">
             Grounded in PPC 1860 · CrPC 1898 · QSO 1984 · Constitution 1973
