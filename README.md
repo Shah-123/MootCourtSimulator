@@ -10,7 +10,7 @@ shown to a student is checked against a corpus, and text that has not been
 authenticated against the official source is labelled rather than presented as
 settled law.
 
-<video src="docs/project-video.mp4" controls width="100%"></video>
+[![CourtSimulator — click to watch the project video](courtsimulator_poster.png)](docs/project-video.mp4)
 
 ▶ [Watch the project video](docs/project-video.mp4) (MP4, 17 MB)
 
