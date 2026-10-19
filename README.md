@@ -10,6 +10,10 @@ shown to a student is checked against a corpus, and text that has not been
 authenticated against the official source is labelled rather than presented as
 settled law.
 
+<video src="docs/project-video.mp4" controls width="100%"></video>
+
+▶ [Watch the project video](docs/project-video.mp4) (MP4, 17 MB)
+
 ---
 
 ## What makes it more than a chatbot
