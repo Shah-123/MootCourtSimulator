@@ -10,9 +10,9 @@ shown to a student is checked against a corpus, and text that has not been
 authenticated against the official source is labelled rather than presented as
 settled law.
 
-[![CourtSimulator — click to watch the project video](courtsimulator_poster.png)](docs/project-video.mp4)
+https://github.com/user-attachments/assets/e3695ba9-74a8-4809-996b-9365cd3b77b8
 
-▶ [Watch the project video](docs/project-video.mp4) (MP4, 17 MB)
+Full-quality 1080p original: [`docs/project-video.mp4`](docs/project-video.mp4) (17 MB).
 
 ---
 
